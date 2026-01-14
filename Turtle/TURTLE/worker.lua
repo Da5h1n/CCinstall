@@ -1,4 +1,4 @@
-perhipheral.find("modem", rednet.open)
+peripheral.find("modem", rednet.open)
 
 -- Identity check logic
 local function getRole()
