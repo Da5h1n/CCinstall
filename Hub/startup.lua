@@ -105,8 +105,18 @@ while true do
         end
 
     elseif eventName == "rednet_message" then
-        -- Forward turtle version/status data to the Dashboard
-        safeSend(event[3])
+        local msg = event[3]
+        if type(msg) == "table" then
+            -- Forward structured data (like version reports) directly
+            safeSend(msg)
+        else
+            -- Wrap simple strings so they show up in the Web Logs
+            safeSend({
+                    type = "turtle_response",
+                    id = event[2],
+                    content = tostring(msg)
+                })
+        end
 
     elseif eventName == "websocket_closed" then
         print("Connection lost. Retrying in 5s...")
