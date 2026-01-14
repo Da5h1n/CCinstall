@@ -116,33 +116,41 @@ local function getStatusReport(checkGPS)
     return report
 end
 
+local function broadcastStatus(fullScan)
+    rednet.broadcast(getStatusReport(fullScan), version_protocol)
+end
+
 -- --- MAIN BOOT ---
-rednet.broadcast(getStatusReport(false), version_protocol)
+print("Initializing system...")
+broadcastStatus(true)
 print("Booted: " .. myName)
 
 while true do
-    local id, msg, protocol = rednet.receive(version_protocol)
-    
-    -- "IDENTIFY_TYPE" triggers a full scan (with movement)
-    -- "SEND_VERSION" triggers a quick update (no movement)
-    if msg == "IDENTIFY_TYPE" then
-        rednet.send(id, getStatusReport(true), version_protocol)
+    local event, id, msg, protocol = os.pullEvent()
 
-    elseif msg == "SEND_VERSION" then
-        rednet.send(id, getStatusReport(false), version_protocol)
+    if event == "turtle_inventory" then
+        print("Inventory change detected. Updating Hub...")
+        broadcastStatus(false)
 
-    elseif type(msg) == "table" and msg.type == "INSTALLER_UPDATE" then
-        print("Update signal received...")
-        rednet.send(id, {type = "turtle_response", id = myID, content = "Update starting..."}, version_protocol)
+    elseif event == "rednet_message" and protocol == version_protocol then
+        if msg == "IDENTIFY_TYPE" then
+            broadcastStatus(true)
+        elseif msg == "SEND_VERSION" then
+            broadcastStatus(false)
+
+        elseif type(msg) == "table" and msg.type == "INSTALLER_UPDATE" then
+            print("Update signal received...")
+            rednet.send(id, {type = "turtle_response", id = myID, content = "Update starting..."}, version_protocol)
         
-        if not fs.exists("installer") then
-            shell.run("pastebin", "get", "S3HkJqdw", "installer")
+            if not fs.exists("installer") then
+                shell.run("pastebin", "get", "S3HkJqdw", "installer")
+            end
+        
+            shell.run("installer", "update", msg.pkg)
+            rednet.send(id, {type = "update_complete", id = myID}, version_protocol)
+        
+            sleep(2)
+            os.reboot()
         end
-        
-        shell.run("installer", "update", msg.pkg)
-        rednet.send(id, {type = "update_complete", id = myID}, version_protocol)
-        
-        sleep(2)
-        os.reboot()
     end
 end
