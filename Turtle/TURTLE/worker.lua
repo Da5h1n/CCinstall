@@ -4,6 +4,7 @@ peripheral.find("modem", rednet.open)
 sleep(1) -- Wait for modded peripherals (Chunkloaders) to initialize
 
 local version_protocol = "fleet_status"
+local lastKnownPos = nil
 
 local function getRole()
     -- 1. Check for Chunkloader (Standard Peripheral)
@@ -69,7 +70,7 @@ end
 
 local function getGPSData()
     local x, y, z = gps.locate(2)
-    if not x then return nil end
+    if not x then return lastKnownPos end
 
     local facing = "unknown"
     -- move to detect orientation
@@ -86,7 +87,8 @@ local function getGPSData()
             turtle.back()
         end
     end
-    return { x = x, y = y, z = z, facing = facing }
+    lastKnownPos = { x = x, y = y, z = z, facing = facing }
+    return lastKnownPos
 end
 
 -- 3. Package status for Hub/Dashboard
@@ -107,12 +109,9 @@ local function getStatusReport(checkGPS)
         v = version,
         fuel = turtle.getFuelLevel(),
         maxFuel = turtle.getFuelLimit(),
-        inventory = getInventory()
+        inventory = getInventory(),
+        pos = checkGPS and getGPSData() or lastKnownPos
     }
-
-    if checkGPS then
-        report.pos = getGPSData()
-    end
     return report
 end
 
@@ -141,14 +140,11 @@ while true do
         elseif type(msg) == "table" and msg.type == "INSTALLER_UPDATE" then
             print("Update signal received...")
             rednet.send(id, {type = "turtle_response", id = myID, content = "Update starting..."}, version_protocol)
-        
             if not fs.exists("installer") then
                 shell.run("pastebin", "get", "S3HkJqdw", "installer")
             end
-        
             shell.run("installer", "update", msg.pkg)
             rednet.send(id, {type = "update_complete", id = myID}, version_protocol)
-        
             sleep(2)
             os.reboot()
         end
