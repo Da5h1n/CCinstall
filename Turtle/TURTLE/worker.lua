@@ -1,4 +1,4 @@
-rednet.open("right")
+perhipheral.find("modem", rednet.open)
 
 -- Identity check logic
 local function getRole()
