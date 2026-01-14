@@ -1,33 +1,39 @@
 -- Reset rednet to ensure a clean state
 rednet.close()
 peripheral.find("modem", rednet.open)
--- Critical: Give modded peripherals (Advanced Peripherals) time to load
-sleep(1) 
+sleep(1) -- Wait for modded peripherals (Chunkloaders) to initialize
 
 local version_protocol = "fleet_status"
 
--- Identity check logic
+-- 1. Identity logic: Scans peripherals AND inventory for tools
 local function getRole()
+    -- Check peripherals (This catches the Chunkloader)
     local names = peripheral.getNames()
-    local role = "worker" -- Default
-
     for _, name in ipairs(names) do
         local pType = peripheral.getType(name)
-        if pType then
-            -- Check for Chunkloader (Advanced Peripherals)
-            if pType:find("chunk") then 
-                return "chunky" 
-            end
-            -- Check for Pickaxe (Diamond or otherwise)
-            if pType:find("pickaxe") or pType:find("mining") then 
-                role = "miner" 
-            end
+        if pType and pType:find("chunk") then return "chunky" end
+    end
+
+    -- Check inventory for Pickaxe (This catches the Miner)
+    -- We scan all 16 slots at boot to find the tool
+    for i = 1, 16 do
+        local item = turtle.getItemDetail(i)
+        if item and (item.name:find("pickaxe") or item.name:find("mining")) then
+            return "miner"
         end
     end
-    return role
+
+    return "worker"
 end
 
--- Function to package current status
+-- 2. Configuration based on detected role
+local myRole = getRole()
+local myID = os.getComputerID()
+local myName = (myRole == "miner") and ("Deep-Core Driller " .. myID) or 
+               (myRole == "chunky") and ("Support Loader " .. myID) or 
+               ("Worker " .. myID)
+
+-- 3. Package status for Hub/Dashboard
 local function getStatusReport()
     local version = "unknown"
     if fs.exists("/.installer/versions.json") then
@@ -39,32 +45,33 @@ local function getStatusReport()
 
     return {
         type = "version_report",
-        id = os.getComputerID(),
-        role = getRole(),
+        id = myID,
+        name = myName,
+        role = myRole,
         v = version,
         fuel = turtle.getFuelLevel(),
         maxFuel = turtle.getFuelLimit()
     }
 end
 
--- Report status immediately on boot/startup using the protocol
+-- --- MAIN BOOT ---
 rednet.broadcast(getStatusReport(), version_protocol)
-print("Turtle Online. Role: " .. getRole())
+print("Booted: " .. myName)
 
 while true do
-    -- Listen specifically on the fleet protocol
     local id, msg, protocol = rednet.receive(version_protocol)
     
+    -- Handle Hub requests
     if msg == "SEND_VERSION" or msg == "IDENTIFY_TYPE" then
         rednet.send(id, getStatusReport(), version_protocol)
 
+    -- Handle Hub Fleet Update
     elseif type(msg) == "table" and msg.type == "INSTALLER_UPDATE" then
-        print("Update signal received for: " .. msg.pkg)
+        print("Update signal received...")
         
-        -- Send "Starting" log to Dashboard
         rednet.send(id, {
             type = "turtle_response", 
-            id = os.getComputerID(), 
+            id = myID, 
             content = "Update starting..."
         }, version_protocol)
         
@@ -72,17 +79,16 @@ while true do
             shell.run("pastebin", "get", "S3HkJqdw", "installer")
         end
         
-        -- Run the update
         shell.run("installer", "update", msg.pkg)
         
-        -- HANDSHAKE: Signal completion to the Hub before rebooting
-        print("Update complete. Signaling Hub...")
+        -- Handshake: Hub waits for this specific signal
+        print("Handshaking Hub...")
         rednet.send(id, {
             type = "update_complete",
-            id = os.getComputerID()
+            id = myID
         }, version_protocol)
         
-        sleep(2) -- Brief pause to ensure message is sent
+        sleep(2)
         os.reboot()
     end
 end
