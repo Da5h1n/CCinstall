@@ -33,9 +33,10 @@ end
 -- 2. Configuration based on detected role
 local myRole = getRole()
 local myID = os.getComputerID()
-local myName = (myRole == "miner") and ("Deep-Core Driller " .. myID) or 
-               (myRole == "chunky") and ("Support Loader " .. myID) or 
+local myName = (myRole == "miner") and ("Miner " .. myID) or 
+               (myRole == "chunky") and ("Chunky " .. myID) or 
                ("Worker " .. myID)
+os.setComputerLabel(myName)
 
 -- 3. Package status for Hub/Dashboard
 local function getStatusReport()
