@@ -1,7 +1,0 @@
-{
-  "name": "MORSECODE",
-  "version": "0.0.1",
-  "description": "A simple translator framework",
-  "entry": "startup.lua",
-  "installDir": ""
-}
