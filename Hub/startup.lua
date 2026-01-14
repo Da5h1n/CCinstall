@@ -1,6 +1,6 @@
 local ws_url = "ws://skinnerm.duckdns.org:25565"
 local installer_pkg = "HUB"
-rednet.open("back")
+perhipheral.find("modem", rednet.open)
 
 local ws = nil
 
