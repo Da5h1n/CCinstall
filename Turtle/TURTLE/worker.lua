@@ -9,25 +9,47 @@ local function getRole()
     return "worker"
 end
 
+-- Function to package current status for the Dashboard
+local function getStatusReport()
+    local version = "unknown"
+    if fs.exists("/.installer/versions.json") then
+        local f = fs.open("/.installer/versions.json", "r")
+        local data = textutils.unserializeJSON(f.readAll())
+        f.close()
+        version = data["TURTLE"] and data["TURTLE"].version or "0"
+    end
+
+    return {
+        type = "version_report",
+        id = os.getComputerID(),
+        role = getRole(),
+        v = version,
+        fuel = turtle.getFuelLevel(),
+        maxFuel = turtle.getFuelLimit()
+    }
+end
+
+-- Report status immediately on boot/startup
+rednet.broadcast(getStatusReport())
+
+print("Turtle Online. Role: " .. getRole())
+
 while true do
     local id, msg = rednet.receive()
     
-    if msg == "SEND_VERSION" then
-        -- Send back role and version (if stored in registry)
-        local version = "unknown"
-        if fs.exists("/.installer/versions.json") then
-            local f = fs.open("/.installer/versions.json", "r")
-            local data = textutils.unserializeJSON(f.readAll())
-            f.close()
-            version = data["TURTLE"] and data["TURTLE"].version or "0"
-        end
-        rednet.send(id, {type="version_report", role=getRole(), v=version})
+    -- "IDENTIFY_TYPE" is used by the Hub during the 'Refresh' sequence
+    if msg == "SEND_VERSION" or msg == "IDENTIFY_TYPE" then
+        rednet.send(id, getStatusReport())
 
     elseif type(msg) == "table" and msg.type == "INSTALLER_UPDATE" then
         print("Update signal received for: " .. msg.pkg)
         
-        -- Let the Hub know we are starting
-        rednet.send(id, "Turtle " .. os.getComputerID() .. " starting update...")
+        -- Send log to Hub -> Python -> Web Dashboard
+        rednet.send(id, {
+            type = "turtle_response", 
+            id = os.getComputerID(), 
+            content = "Updating to latest version..."
+        })
         
         if not fs.exists("installer") then
             shell.run("pastebin", "get", "S3HkJqdw", "installer")
