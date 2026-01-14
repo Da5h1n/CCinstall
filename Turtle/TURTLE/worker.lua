@@ -5,21 +5,25 @@ sleep(1) -- Wait for modded peripherals (Chunkloaders) to initialize
 
 local version_protocol = "fleet_status"
 
--- 1. Identity logic: Scans peripherals AND inventory for tools
 local function getRole()
-    -- Check peripherals (This catches the Chunkloader)
+    -- 1. Check for Chunkloader (Standard Peripheral)
     local names = peripheral.getNames()
     for _, name in ipairs(names) do
         local pType = peripheral.getType(name)
         if pType and pType:find("chunk") then return "chunky" end
     end
 
-    -- Check inventory for Pickaxe (This catches the Miner)
-    -- We scan all 16 slots at boot to find the tool
-    for i = 1, 16 do
-        local item = turtle.getItemDetail(i)
-        if item and (item.name:find("pickaxe") or item.name:find("mining")) then
-            return "miner"
+    -- 2. Check Equipped Items (The "Hand" check)
+    -- We check both hands just in case you equip it on the left
+    local hands = { turtle.getEquippedRight(), turtle.getEquippedLeft() }
+    
+    for _, item in ipairs(hands) do
+        if item and item.name then
+            local itemName = item.name:lower()
+            -- Matches minecraft:diamond_pickaxe, etc.
+            if itemName:find("pickaxe") or itemName:find("mining") then
+                return "miner"
+            end
         end
     end
 
