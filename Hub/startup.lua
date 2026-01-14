@@ -1,31 +1,36 @@
 local ws_url = "ws://skinnerm.duckdns.org:25565"
-local modem_side = "back" -- Adjust to your modem position
+local modem_side = "back" -- Adjust as needed
 
 rednet.open(modem_side)
-print("Connecting to PC at " .. ws_url)
+print("Connecting to: " .. ws_url)
 
 local ws, err = http.websocket(ws_url)
-if not ws then
-    error("Could not connect: " .. tostring(err))
-end
+if not ws then error("Connection failed: " .. tostring(err)) end
 
-print("Connected to PC Command Center!")
+print("Bridge Active. Type 'all <cmd>' for broadcast.")
 
 while true do
-    local event, url, msg = os.pullEvent("websocket_message")
-    print("Signal Received: " .. msg)
-
-    -- Expected format: "ID Command"
+    local _, _, msg = os.pullEvent("websocket_message")
+    
     local words = {}
     for word in msg:gmatch("%S+") do table.insert(words, word) end
 
-    local targetID = tonumber(words[1])
+    local target = words[1]:lower()
     local command = words[2]
 
-    if targetID and command then
-        rednet.send(targetID, command)
-        ws.send("Sent '" .. command .. "' to Turtle " .. targetID)
+    if target == "all" then
+        -- BROADCAST FEATURE
+        print("Broadcasting: " .. command)
+        rednet.broadcast(command)
+        ws.send("Broadcasted '" .. command .. "' to all workers.")
     else
-        ws.send("Error: Use format 'ID Command'")
+        -- SINGLE TARGET
+        local id = tonumber(target)
+        if id and command then
+            rednet.send(id, command)
+            ws.send("Sent to [" .. id .. "]: " .. command)
+        else
+            ws.send("Invalid target/command.")
+        end
     end
 end
