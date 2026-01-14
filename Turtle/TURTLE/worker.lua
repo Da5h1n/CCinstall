@@ -8,13 +8,23 @@ local version_protocol = "fleet_status"
 
 -- Identity check logic
 local function getRole()
-    for _, name in ipairs(peripheral.getNames()) do
+    local names = peripheral.getNames()
+    local role = "worker" -- Default
+
+    for _, name in ipairs(names) do
         local pType = peripheral.getType(name)
-        -- Advanced Peripherals chunkloaders use a specific type string
-        if pType and pType:find("chunk") then return "chunky" end
-        if pType and pType:find("pickaxe") then return "miner" end
+        if pType then
+            -- Check for Chunkloader (Advanced Peripherals)
+            if pType:find("chunk") then 
+                return "chunky" 
+            end
+            -- Check for Pickaxe (Diamond or otherwise)
+            if pType:find("pickaxe") or pType:find("mining") then 
+                role = "miner" 
+            end
+        end
     end
-    return "worker"
+    return role
 end
 
 -- Function to package current status
