@@ -13,11 +13,23 @@ local function safeSend(data)
     end
 end
 
+local function getHubVersion()
+    local path = "/.installer/versions.json"
+    if fs.exists(path) then
+        local f = fs.open(path, "r")
+        local data = textutils.unserialiseJSON(f.readAll())
+        f.close()
+        return (data and data["HUB"]) and data["HUB"].version or "?"
+    end
+    return "unknown"
+end
+
 local function connect()
     print("Connecting to PC...")
     ws, err = http.websocket(ws_url)
-    if not ws then return false end
-    safeSend({type="version_report", id="HUB", role="hub", v="1.1", fuel=0, maxFuel=0})
+    if not ws then print("Failed: " .. tostring(err)) return false end
+    print("Connected!")
+    safeSend({type="version_report", id="HUB", name="Central Command Hub", role="hub", v=getHubVersion(), fuel=0, maxFuel=0})
     return true
 end
 
