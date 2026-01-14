@@ -1,12 +1,16 @@
-rednet.open("right") -- Adjust modem side
-print("Turtle ID: " .. os.getComputerID() .. " ready.")
+rednet.open("right")
+local bridgeID = 0 -- Set this to your Bridge Computer's ID
+
+print("Turtle ID: " .. os.getComputerID())
 
 while true do
     local id, msg = rednet.receive()
+    
     if msg == "dance" then
-        print("Dancing!")
-        for i=1,4 do turtle.turnRight() end
-    elseif msg == "move" then
-        turtle.forward()
+        turtle.turnRight()
+        rednet.send(id, "I am finished dancing!") -- Sends back to bridge
+    elseif msg == "status" then
+        local fuel = turtle.getFuelLevel()
+        rednet.send(id, "Fuel level is: " .. fuel)
     end
 end
