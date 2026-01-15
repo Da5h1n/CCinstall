@@ -1,10 +1,40 @@
+local myState = "idle"
+local targetPos = nil
+local homePos = {x = -37, y = 71, z = 1017}
+local lastKnownPos = nil
+
+local rowOffsets = {
+    miner = 2,
+    chunky = 4,
+    excavator = 6,
+    lumberjack = 8,
+    farmer = 10,
+    worker = 12
+}
+
+local function faceDirection(dir)
+    local directions = {"north", "east", "south", "west"}
+    local function getDirIdx(d)
+        for i, v in ipairs(directions) do if v == d then return i end end
+        return 1
+    end
+
+    if lastKnownPos.facing == "unknown" then getGPSData() end
+
+    while lastKnownPos.facing ~= dir do
+        turtle.turnRight()
+        local curIdx = getDirIdx(lastKnownPos.facing)
+        local nextIdx = (curIdx % 4) + 1
+        lastKnownPos.facing = directions[nextIdx]
+    end
+end
+
 -- Reset rednet to ensure a clean state
 rednet.close()
 peripheral.find("modem", rednet.open)
 sleep(1) -- Wait for modded peripherals (Chunkloaders) to initialize
 
 local version_protocol = "fleet_status"
-local lastKnownPos = nil
 
 local function getRole()
     -- 1. Check for Chunkloader (Standard Peripheral)
@@ -91,6 +121,57 @@ local function getGPSData()
     return lastKnownPos
 end
 
+local function smartStep(direction)
+    local maxRetries = 3
+    local retries = 0
+    while not direction() do
+        if retries >= maxRetries then return false end
+        print("Obstacle detected! Waiting...")
+        sleep(1)
+        retries = retries + 1
+    end
+    return true
+end
+
+local function gotoCoords(tx, ty, tz)
+    myState = "traveling"
+    targetPos = {x = tx, y = ty, z = tz}
+    broadcastStatus(false)
+
+    -- flight level
+    while lastKnownPos.y < ty + 2 do
+        if smartStep(turtle.up) then lastKnownPos.y = lastKnownPos.y + 1 else break end
+    end
+
+    -- X alignment
+    while lastKnownPos.x ~= tx do
+        faceDirection(lastKnownPos.x < tx and "east" or "west")
+        if smartStep(turtle.forward) then
+            lastKnownPos.x = (lastKnownPos.x < tx) and lastKnownPos.x + 1 or lastKnownPos.x - 1 
+        end
+        if math.abs(lastKnownPos.x % 5) == 0 then broadcastStatus(false) end
+    end
+
+    -- Z alignment
+    while lastKnownPos.z ~= tz do
+        faceDirection(lastKnownPos.z < tz and "south" or "north")
+        if smartStep(turtle.forward) then
+            lastKnownPos.z = (lastKnownPos.z < tz) and lastKnownPos.z + 1 or lastKnownPos.z - 1
+        end
+        if math.abs(lastKnownPos.z % 5) == 0 then broadcastStatus(false) end
+    end
+
+    -- Y desent
+    while lastKnownPos.y > ty do
+        if smartStep(turtle.down) then lastKnownPos.y = lastKnownPos.y - 1 else break end
+    end
+
+    myState = "parked"
+    targetPos = nil
+    broadcastStatus(false)
+    
+end
+
 -- 3. Package status for Hub/Dashboard
 local function getStatusReport(checkGPS)
     local version = "unknown"
@@ -136,6 +217,17 @@ while true do
             broadcastStatus(true)
         elseif msg == "SEND_VERSION" then
             broadcastStatus(false)
+
+        elseif type(msg) == "table" and msg.type == "RECALL" then
+            print("Recalling to parking lot...")
+            local zOffset = rowOffsets[myRole] or 10
+            local xOffset = (myID % 10)
+
+            local parkX = homePos.x + xOffset
+            local parkY = homePos.y
+            local parkZ = homePos.z + zOffset
+
+            gotoCoords(parkX, parkY, parkZ)
 
         elseif type(msg) == "table" and msg.type == "INSTALLER_UPDATE" then
             print("Update signal received...")
