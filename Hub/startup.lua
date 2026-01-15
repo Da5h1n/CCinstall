@@ -230,67 +230,59 @@ local hubHeartbeat = os.startTimer(15)
 
 while true do
     local event, p1, p2, p3 = os.pullEvent()
-    
-    -- Handle Web Dashboard Commands
+
+    -- handle dashboard Comamnds
     if event == "websocket_message" then
         local raw = p2
         local success, msg = pcall(textutils.unserialiseJSON, raw)
 
-        if success and type(msg) == "table" and msg.target then
-            if msg.target == "HUB" then
-                if msg.command == "reboot" then os.reboot() end
-            else
-                -- forward directly to ID
-                relayTargetCommand(msg.target, msg.command)
-            end
-        else
-            local cmd = tostring(p2)
-            print("Web Broadcast: " .. cmd)
+        if not success or type(msg) ~= "table" then
+            msg = { command = tostring(raw) }
+        end
 
-            if cmd == "update fleet" then 
-                coordinateFleetUpdate()
+        local cmd = msg.command or msg.type
+        print("Recieved Command: " .. tostring(cmd))
 
-            elseif cmd == "refresh" then 
-                print("Broadcasting Global Refresh...")
-                rednet.broadcast("IDENTIFY_TYPE", version_protocol)
-                sleep(1.5)
-                updatePairs()
+        -- targeted Commands
+        if msg.target and msg.target ~= "HUB" then
+            relayTargetCommand(msg.target, cmd)
+        -- local hub commands
+        elseif cmd == "reboot" then
+            os.reboot()
 
-            elseif cmd == "recall" then
-                local hubPos = getHubPos()
-                if not hubPos then return end
-                
+        elseif cmd == "refresh" then
+            print("Broadcasting Global Refresh...")
+            rednet.broadcast("IDENTIFY_TYPE", version_protocol)
+            sleep(1.5)
+            updatePairs()
+
+        elseif cmd == "update fleet" then
+            coordinateFleetUpdate()
+
+        elseif cmd == "recall" then
+            local hubPos = getHubPos()
+            if hubPos then
                 print("Calculating formation positions...")
-
                 local counters = { chunky=0, miner=0, excavator=0, lumberjack=0, farmer=0, worker=0 }
-                local roleLineMap = { chunky=1, miner=2, excavator=3, lumberjack=4, farmer=5, worker=6}
-
+                local roleLineMap = { chunky=1, miner=2, excavator=3, lumberjack=4, farmer=5, worker=6 }
                 local sortedIDs = {}
-                for id, _ in pairs(fleet_cache) do table.insert(sortedIDs, id) end
-                table.sort(sortedIDs)
-
                 for _, id in ipairs(sortedIDs) do
                     local role = fleet_roles[id] or "worker"
                     local lineNum = roleLineMap[role] or 7
                     local slotNum = counters[role]
-
                     local tx = hubPos.x - 2 - slotNum
                     local ty = hubPos.y
                     local tz = hubPos.z - 2 - ((lineNum - 1) * 2)
 
-                    rednet.send(id, {
-                        type = "RECALL_POSITION",
-                        x = tx, y = ty, z = tz
-                    }, version_protocol)
-
+                    rednet.send(id, { type = "RECALL_POSITION", x = tx, y = ty, z = tz}, version_protocol)
                     counters[role] = counters[role] + 1
                 end
                 safeSend({type="turtle_response", id="HUB", content="Formation orders sent."})
-
-            elseif cmd == "start_mining" then
-                local waypoints = getAbsoluteWaypoints()
+            end
+        elseif cmd == "start_mining" then
+            local waypoints = getAbsoluteWaypoints()
+            if waypoints then
                 local miners = {}
-
                 for id, role in pairs(fleet_roles) do
                     if role == "miner" then table.insert(miners, id) end
                 end
@@ -298,10 +290,11 @@ while true do
 
                 for i, minerID in ipairs(miners) do
                     local startX = waypoints.mine_down.x + ((i - 1) * 3)
-                    local startY = msg.y_level or 30
+                    local startY = tonumber(msg.y_level) or 30
+                    local dist = tonumber(msg.distance) or 32
                     local startZ = waypoints.mine_down.z
-
-                    local jobQueue = generateStripQueue(startX, startY, startZ, msg.distance or 32)
+                    
+                    local jobQueue = generateStripQueue(startX, startY, startZ, dist)
 
                     rednet.send(minerID, {
                         type = "COORD_MISSION",
@@ -309,27 +302,25 @@ while true do
                         waypoints = waypoints,
                         y_level = startY
                     }, version_protocol)
+                    print("Mission dispatched to " .. minerID)
                 end
             end
         end
-
-    -- Handle Turtle Check-ins
+        -- handle rednet messages
     elseif event == "rednet_message" then
         local senderID, message, protocol = p1, p2, p3
-
         if protocol == version_protocol then
             if type(message) == "table" then
                 fleet_cache[senderID] = true
                 if message.role then fleet_roles[senderID] = message.role end
                 safeSend(message)
             elseif message == "request_parking" then
-                print("Turtle " .. senderID .. " request_parking.")
+                print("Turtle " .. senderID .. " requested parking.")
                 sendParkingOrder(senderID)
             end
         end
-
+        -- Heartbeat timer
     elseif event == "timer" and p1 == hubHeartbeat then
-
         safeSend({
             type = "version_report",
             id = "HUB",
@@ -340,9 +331,9 @@ while true do
         })
         hubHeartbeat = os.startTimer(15)
 
-    -- Auto-reconnect if websocket drops
+    -- RECONECT LOGIC
     elseif event == "websocket_closed" then
-        print("Websocket lost!")
+        print("Websocket lost! Reconnecting...")
         ws = nil
         connect()
     end
