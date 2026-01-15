@@ -114,6 +114,7 @@ local function getStatusReport(checkGPS)
         name = myName,
         role = myRole,
         v = version,
+        state = myState,
         fuel = turtle.getFuelLevel(),
         maxFuel = turtle.getFuelLimit(),
         inventory = getInventory(),
