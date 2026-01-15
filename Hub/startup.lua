@@ -27,32 +27,34 @@ local function getHubVersion()
 end
 
 local function connect()
-    print("Connecting to PC Dashboard...")
-    ws, err = http.websocket(ws_url)
-    if not ws then 
-        print("Connection Failed: " .. tostring(err)) 
-        return false 
-    end
-    
-    print("Connected!")
-    
-    -- 1. Identify self to Dashboard
-    safeSend({
-        type = "version_report", 
-        id = "HUB", 
-        name = "Central Command Hub", 
-        role = "hub", 
-        v = getHubVersion(), 
-        fuel = 0, 
-        maxFuel = 0
-    })
+    while true do
+        print("Connecting to PC Dashboard...")
+        local socket, err = http.websocket(ws_url)
 
-    -- 2. FORCE REFRESH: Tell all turtles to report in immediately
-    -- This populates the dashboard instantly after a Hub reboot
-    print("Requesting fleet status...")
-    rednet.broadcast("IDENTIFY_TYPE", version_protocol)
-    
-    return true
+        if socket then
+            print("Connected!")
+            ws = socket
+
+                -- 1. Identify HUB to Dashboard
+            safeSend({
+                type = "version_report", 
+                id = "HUB", 
+                name = "Central Command Hub", 
+                role = "hub", 
+                v = getHubVersion(), 
+                fuel = 0, 
+                maxFuel = 0
+            })
+
+            print("Requesting fleet status...")
+            rednet.broadcast("IDENTIFY_TYPE", version_protocol)
+            return true
+        else
+            print("Connection Failed: " ..tostring(err))
+            print("Retrying in 5 seconds...")
+            sleep(5)
+        end
+    end
 end
 
 local function coordinateFleetUpdate()
@@ -130,12 +132,14 @@ while true do
     -- Handle Web Dashboard Commands
     if event[1] == "websocket_message" then
         local msg = event[3]
+        print("Web CMD: " .. tostring(msg))
+
         if msg == "update fleet" then 
             coordinateFleetUpdate()
         elseif msg == "refresh" then 
             refreshPairs()
         elseif msg == "recall" then
-            print("Dashboard command: RECALL ALL")
+            print("Broadcasting: RECALL")
             rednet.broadcast({type = "RECALL"}, version_protocol)
             safeSend({type="turtle_response", id="HUB", content="Recall signal sent to fleet."})
         end
@@ -150,13 +154,15 @@ while true do
             -- Store turtle in cache so we know they exist for updates
             fleet_cache[senderID] = true
             -- Forward any turtle reports (status, fuel, version) to the Web UI
-            safeSend(message)
+            if not safeSend(message) then
+                print("Warning: Web UI link down. Report cashed locally.")
+            end
         end
 
     -- Auto-reconnect if websocket drops
     elseif event[1] == "websocket_closed" then
-        print("Websocket lost. Retrying in 5s...")
-        sleep(5)
+        print("Websocket lost!")
+        ws = nil
         connect()
     end
 end
