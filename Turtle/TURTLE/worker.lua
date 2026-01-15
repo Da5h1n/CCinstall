@@ -12,29 +12,14 @@ local rowOffsets = {
     worker = 12
 }
 
-local function faceDirection(dir)
-    local directions = {"north", "east", "south", "west"}
-    local function getDirIdx(d)
-        for i, v in ipairs(directions) do if v == d then return i end end
-        return 1
-    end
-
-    if lastKnownPos.facing == "unknown" then getGPSData() end
-
-    while lastKnownPos.facing ~= dir do
-        turtle.turnRight()
-        local curIdx = getDirIdx(lastKnownPos.facing)
-        local nextIdx = (curIdx % 4) + 1
-        lastKnownPos.facing = directions[nextIdx]
-    end
-end
-
 -- Reset rednet to ensure a clean state
 rednet.close()
 peripheral.find("modem", rednet.open)
 sleep(1) -- Wait for modded peripherals (Chunkloaders) to initialize
 
 local version_protocol = "fleet_status"
+
+
 
 local function getRole()
     -- 1. Check for Chunkloader (Standard Peripheral)
@@ -62,25 +47,6 @@ local function getRole()
     return "worker"
 end
 
--- 2. Configuration based on detected role
-local myRole = getRole()
-local myID = os.getComputerID()
-
-local roleNames = {
-    miner = "Deep-Core Driller",
-    excavator = "Excavation Unit",
-    lumberjack = "Forester Unit",
-    farmer = "Agricultural Unit",
-    chunky = "Support Loader",
-    combat = "Security Unit",
-    worker = "General Worker"
-}
-
-local myName = (roleNames[myRole] or "Unit") .. " " .. myID
-
--- Set the physical label in Minecraft
-os.setComputerLabel(myName)
-
 local function getInventory()
     local inv = {}
     for i = 1, 16 do
@@ -96,6 +62,18 @@ local function getInventory()
         end
     end
     return inv
+end
+
+local function smartStep(direction)
+    local maxRetries = 3
+    local retries = 0
+    while not direction() do
+        if retries >= maxRetries then return false end
+        print("Obstacle detected! Waiting...")
+        sleep(1)
+        retries = retries + 1
+    end
+    return true
 end
 
 local function getGPSData()
@@ -121,16 +99,48 @@ local function getGPSData()
     return lastKnownPos
 end
 
-local function smartStep(direction)
-    local maxRetries = 3
-    local retries = 0
-    while not direction() do
-        if retries >= maxRetries then return false end
-        print("Obstacle detected! Waiting...")
-        sleep(1)
-        retries = retries + 1
+local function getStatusReport(checkGPS)
+    local version = "unknown"
+    if fs.exists("/.installer/versions.json") then
+        local f = fs.open("/.installer/versions.json", "r")
+        local data = textutils.unserializeJSON(f.readAll())
+        f.close()
+        version = (data and data["TURTLE"]) and data["TURTLE"].version or "0"
     end
-    return true
+
+    local report = {
+        type = "version_report",
+        id = myID,
+        name = myName,
+        role = myRole,
+        v = version,
+        fuel = turtle.getFuelLevel(),
+        maxFuel = turtle.getFuelLimit(),
+        inventory = getInventory(),
+        pos = checkGPS and getGPSData() or lastKnownPos
+    }
+    return report
+end
+
+local function broadcastStatus(fullScan)
+    rednet.broadcast(getStatusReport(fullScan), version_protocol)
+end
+
+local function faceDirection(dir)
+    local directions = {"north", "east", "south", "west"}
+    local function getDirIdx(d)
+        for i, v in ipairs(directions) do if v == d then return i end end
+        return 1
+    end
+
+    if lastKnownPos.facing == "unknown" then getGPSData() end
+
+    while lastKnownPos.facing ~= dir do
+        turtle.turnRight()
+        local curIdx = getDirIdx(lastKnownPos.facing)
+        local nextIdx = (curIdx % 4) + 1
+        lastKnownPos.facing = directions[nextIdx]
+    end
 end
 
 local function gotoCoords(tx, ty, tz)
@@ -172,35 +182,28 @@ local function gotoCoords(tx, ty, tz)
     
 end
 
--- 3. Package status for Hub/Dashboard
-local function getStatusReport(checkGPS)
-    local version = "unknown"
-    if fs.exists("/.installer/versions.json") then
-        local f = fs.open("/.installer/versions.json", "r")
-        local data = textutils.unserializeJSON(f.readAll())
-        f.close()
-        version = (data and data["TURTLE"]) and data["TURTLE"].version or "0"
-    end
-
-    local report = {
-        type = "version_report",
-        id = myID,
-        name = myName,
-        role = myRole,
-        v = version,
-        fuel = turtle.getFuelLevel(),
-        maxFuel = turtle.getFuelLimit(),
-        inventory = getInventory(),
-        pos = checkGPS and getGPSData() or lastKnownPos
-    }
-    return report
-end
-
-local function broadcastStatus(fullScan)
-    rednet.broadcast(getStatusReport(fullScan), version_protocol)
-end
-
 -- --- MAIN BOOT ---
+
+-- Configuration based on detected role
+local myRole = getRole()
+local myID = os.getComputerID()
+
+local roleNames = {
+    miner = "Deep-Core Driller",
+    excavator = "Excavation Unit",
+    lumberjack = "Forester Unit",
+    farmer = "Agricultural Unit",
+    chunky = "Support Loader",
+    combat = "Security Unit",
+    worker = "General Worker"
+}
+
+local myName = (roleNames[myRole] or "Unit") .. " " .. myID
+
+-- Set the physical label in Minecraft
+os.setComputerLabel(myName)
+
+
 print("Initializing system...")
 broadcastStatus(true)
 print("Booted: " .. myName)
