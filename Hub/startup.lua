@@ -250,13 +250,13 @@ while true do
             if cmd == "update fleet" then 
                 coordinateFleetUpdate()
 
-            elseif msg == "refresh" then 
+            elseif cmd == "refresh" then 
                 print("Broadcasting Global Refresh...")
                 rednet.broadcast("IDENTIFY_TYPE", version_protocol)
                 sleep(1.5)
                 updatePairs()
 
-            elseif msg == "recall" then
+            elseif cmd == "recall" then
                 local hubPos = getHubPos()
                 if not hubPos then return end
                 
@@ -287,7 +287,7 @@ while true do
                 end
                 safeSend({type="turtle_response", id="HUB", content="Formation orders sent."})
 
-            elseif msg.command == "start_mining" then
+            elseif cmd == "start_mining" then
                 local waypoints = getAbsoluteWaypoints()
                 local miners = {}
 
