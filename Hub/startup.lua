@@ -98,11 +98,8 @@ local function updatePairs()
     local chunky = {}
 
     for id, role in pairs(fleet_roles) do
-        if role == "miner" then 
-            table.insert(miners, id)
-        elseif role == "chunky" then
-            table.insert(chunky, id)
-        end
+        if role == "miner" then table.insert(miners, tonumber(id))
+        elseif role == "chunky" then table.insert(chunky, tonumber(id)) end
     end
 
     table.sort(miners)
@@ -111,18 +108,15 @@ local function updatePairs()
     fleet_pairs = {}
     local pairCount = math.min(#miners, #chunky)
     for i = 1, pairCount do
-        fleet_pairs[miners[i]] = chunky[i]
+        fleet_pairs[tostring(miners[i])] = tostring(chunky[i])
     end
 
-    local dashboardMsg = {
+    safeSend({
         type = "pairs_report",
         pairs = fleet_pairs,
         count = pairCount
-    }
-
-    safeSend(dashboardMsg)
-    print("Pairs Synced: " .. pairCount .. " teams ready.")
-
+    })
+    print("Pairs Synced: " .. pairCount)
 end
 
 local function coordinateFleetUpdate(whitelist)
