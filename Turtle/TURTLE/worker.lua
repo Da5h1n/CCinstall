@@ -98,12 +98,14 @@ local function getGPSData()
 
     local facing = "unknown"
     local moveSuccess = false
+    local movedUp = false
 
     -- move to detect orientation
     if not turtle.detect() then
         moveSuccess = turtle.forward()
     elseif not turtle.detectUp() then
         moveSuccess = turtle.up()
+        movedUp = true
     end
 
     if moveSuccess then
@@ -113,14 +115,18 @@ local function getGPSData()
             elseif x2 < x then facing = "west"
             elseif z2 > z then facing = "south"
             elseif z2 < z then facing = "north"
-            elseif y2 > y then
-                
             end
         end
-        if y2 and y2 > y then turtle.down() else turtle.back() end
+
+        if movedUp then turtle.down() else turtle.back() end
     end
 
-    lastKnownPos = { x = x, y = y, z = z, facing = facing}
+    lastKnownPos.x, lastKnownPos.y, lastKnownPos.z = x, y, z
+
+    if facing ~= "unknown" then
+        lastKnownPos.facing = facing
+    end
+
     return true
 end
 
@@ -137,7 +143,12 @@ local function getStatusReport(checkGPS)
         f.close()
         version = (data and data["TURTLE"]) and data["TURTLE"].version or "0"
     end
-    local posData = checkGPS and getGPSData() or lastKnownPos
+
+    if checkGPS then
+        getGPSData()
+    end
+
+    local posData = lastKnownPos
 
     local report = {
         type = "version_report",
@@ -218,9 +229,9 @@ end
 local function mineTo(tx, ty, tz)
     local function moveAndSync(moveFunc, axis, delta)
         if moveFunc() then
-            local nx, ny nz = gps.locate(2)
+            local nx, ny, nz = gps.locate(2)
             if nx then
-                lastKnownPos.x, lastKnownPos.y, lastKnownPos.z = nz, ny, nz
+                lastKnownPos.x, lastKnownPos.y, lastKnownPos.z = nx, ny, nz
             else
                 lastKnownPos[axis] = lastKnownPos[axis] + delta
             end
@@ -236,7 +247,7 @@ local function mineTo(tx, ty, tz)
     end
     while lastKnownPos.y > ty do
         while turtle.detectDown() do turtle.digDown() end
-        moveAndSync(turtle.forward, "y", -1)
+        moveAndSync(turtle.down, "y", -1)
     end
 
     local dx = tx - lastKnownPos.x
