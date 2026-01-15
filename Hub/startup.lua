@@ -40,7 +40,12 @@ end
 local function safeSend(data)
     if ws then
         local msg = type(data) == "table" and textutils.serializeJSON(data) or tostring(data)
-        pcall(function() ws.send(msg) end)
+        local success = pcall(function () ws.send(msg) end)
+        if not success then
+            print("Send failed. Closing socket.")
+            ws.close()
+            ws = nil
+        end
     end
 end
 
@@ -177,8 +182,12 @@ local function sendParkingOrder(id)
         if crole == role then table.insert(sortedIDs, cid) end
     end
     table.sort(sortedIDs)
+
     for i, cid in ipairs(sortedIDs) do
-        if cid == id then slotNum = i - 1 break end
+        if cid == id then
+            slotNum = i - 1
+            break
+        end
     end
 
     local tx = hubPos.x - 2 - slotNum
@@ -193,12 +202,18 @@ local function sendParkingOrder(id)
     print("Sent individual parking order to " .. id)
 end
 
-function relayTargetCommand(targetID, command)
-    print("Relaying CMD ["..command .. "] to Turtle "..targetID)
-    rednet.send(targetID, {
-        type = "DIRECT_COMMAND",
-        cmd = command
-    }, version_protocol)
+local function relayTargetCommand(targetID, command)
+    local id = tonumber(targetID)
+    if id then
+        print("Relaying CMD ["..command .. "] to Turtle "..targetID)
+        rednet.send(id, {
+            type = "DIRECT_COMMAND",
+            cmd = command
+        }, version_protocol)
+    else
+       print("Error: Invalid Target ID: " .. tostring(targetID))
+    end
+
 end
 
 local function generateStripQueue(startX, startY, startZ, distance)
@@ -254,9 +269,11 @@ while true do
             os.reboot()
 
         elseif cmd == "refresh" then
+            fleet_cache = {}
+            fleet_roles = {}
             print("Broadcasting Global Refresh...")
             rednet.broadcast("IDENTIFY_TYPE", version_protocol)
-            sleep(1.5)
+            sleep(2)
             updatePairs()
 
         elseif cmd == "update fleet" then
@@ -277,7 +294,7 @@ while true do
                 for _, id in ipairs(sortedIDs) do
                     local role = fleet_roles[id] or "worker"
                     local lineNum = roleLineMap[role] or 7
-                    local slotNum = counters[role]
+                    local slotNum = counters[role] or 0
                     local tx = hubPos.x - 2 - slotNum
                     local ty = hubPos.y
                     local tz = hubPos.z - 2 - ((lineNum - 1) * 2)
