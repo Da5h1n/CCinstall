@@ -224,7 +224,7 @@ while true do
             broadcastStatus(false)
 
         elseif type(msg) == "table" and msg.type == "RECALL_POSITION" then
-            print("Received parking orders: ".. msg.x ", " .. msg.z)
+            print("Received parking orders: ".. msg.x .. ", " .. msg.z)
 
             gotoCoords(msg.x, msg.y, msg.z)
 
