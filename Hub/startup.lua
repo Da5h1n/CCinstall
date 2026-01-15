@@ -3,8 +3,8 @@ local version_protocol = "fleet_status"
 peripheral.find("modem", rednet.open)
 
 local ws = nil
-local active_pairs = {}
 local fleet_cache = {} 
+local fleet_roles = {}
 
 local function getHubPos()
     local x, y, z = gps.locate(2)
@@ -127,15 +127,34 @@ while true do
 
         elseif msg == "recall" then
             local hubPos = getHubPos()
-            if hubPos then
-                print("Broadcasting recall with Hub position")
-                rednet.broadcast({
-                    type = "RECALL",
-                    hubx = hubPos.x,
-                    huby = hubPos.y,
-                    hubz = hubPos.z
+            if not hubPos then return end
+            
+            print("Calculating formation positions...")
+
+            local counters = { chunky=0, miner=0, excavator=0, lumberjack=0, farmer=0, worker=0 }
+            local roleLineMap = { chunky=1, miner=2, excavator=3, lumberjack=4, farmer=5, worker=6}
+
+            local sortedIDs = {}
+            for id, _ in pairs(fleet_cache) do table.insert(sortedIDs, id) end
+            table.sort(sortedIDs)
+
+            for _, id in ipairs(sortedIDs) do
+                local role = fleet_roles[id] or "worker"
+                local lineNum = roleLineMap[role] or 7
+                local slotNum = counters[role]
+
+                local tx = hubPos.x + 2 + slotNum
+                local ty = hubPos.y
+                local tz = hubPos.z - 2 - ((lineNum - 1) * 2)
+
+                rednet.send(id, {
+                    type = "RECALL_POSITION",
+                    x = tx, y = ty, z = tz
                 }, version_protocol)
+
+                counters[role] = counters[role] + 1
             end
+            safeSend({type="turtle_response", id="HUB", content="Formation orders sent."})
         end
 
     -- Handle Turtle Check-ins
@@ -145,10 +164,9 @@ while true do
         if protocol == version_protocol and type(message) == "table" then
             -- Store turtle in cache so we know they exist for updates
             fleet_cache[senderID] = true
+            if message.role then fleet_roles[senderID] = message.role end
             -- Forward any turtle reports (status, fuel, version) to the Web UI
-            if not safeSend(message) then
-                print("Warning: Web UI link down. Report cashed locally.")
-            end
+            safeSend(message)
         end
 
     elseif event == "timer" and p1 == hubHeartbeat then
