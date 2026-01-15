@@ -243,8 +243,8 @@ while true do
             msg = { command = tostring(raw) }
         end
 
-        local cmd = msg.command or msg.type
-        print("Recieved Command: " .. tostring(cmd))
+        local cmd = tostring(msg.command or msg.type or "")
+        print("Recieved Command: " .. cmd)
 
         -- targeted Commands
         if msg.target and msg.target ~= "HUB" then
@@ -269,6 +269,11 @@ while true do
                 local counters = { chunky=0, miner=0, excavator=0, lumberjack=0, farmer=0, worker=0 }
                 local roleLineMap = { chunky=1, miner=2, excavator=3, lumberjack=4, farmer=5, worker=6 }
                 local sortedIDs = {}
+                for id, _ in pairs(fleet_cache) do
+                    table.insert(sortedIDs, id)
+                end
+                table.sort(sortedIDs)
+
                 for _, id in ipairs(sortedIDs) do
                     local role = fleet_roles[id] or "worker"
                     local lineNum = roleLineMap[role] or 7
@@ -278,7 +283,7 @@ while true do
                     local tz = hubPos.z - 2 - ((lineNum - 1) * 2)
 
                     rednet.send(id, { type = "RECALL_POSITION", x = tx, y = ty, z = tz}, version_protocol)
-                    counters[role] = counters[role] + 1
+                    counters[role] = (counters[role] or 0) + 1
                 end
                 safeSend({type="turtle_response", id="HUB", content="Formation orders sent."})
             end
