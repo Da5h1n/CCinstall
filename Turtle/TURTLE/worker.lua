@@ -201,16 +201,17 @@ local function gotoCoords(tx, ty, tz)
 end
 
 -- --- MAIN BOOT ---
-
+local heartbeatTimer = os.startTimer(20)
 print("Initializing system...")
 broadcastStatus(true)
 print("Booted: " .. myName)
 
 while true do
-    local event, id, msg, protocol = os.pullEvent(20)
+    local event, id, msg, protocol = os.pullEvent()
 
-    if not event then
+    if event == "timer" and id == heartbeatTimer then
         broadcastStatus(false)
+        heartbeatTimer = os.startTimer(20)
     
     elseif event == "turtle_inventory" then
         print("Inventory change detected. Updating Hub...")
