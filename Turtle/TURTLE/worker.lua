@@ -208,17 +208,27 @@ local function gotoCoords(tx, ty, tz)
 end
 
 local function mineTo(tx, ty, tz)
-    
     while lastKnownPos.y < ty do
         while turtle.detectUp() do turtle.digUp() end
         if smartStep(turtle.up) then lastKnownPos.y = lastKnownPos.y + 1 end
     end
-    while lastKnownPos.y > ty do 
+    while lastKnownPos.y > ty do
         while turtle.detectDown() do turtle.digDown() end
         if smartStep(turtle.down) then lastKnownPos.y = lastKnownPos.y - 1 end
     end
 
-    -- horizontal movement
+    local dx = tx - lastKnownPos.x
+    local dz = tz - lastKnownPos.z
+
+    if dx ~= 0 then
+        faceDirection(dx > 0 and "east" or "west")
+        while turtle.detect() do turtle.dig() end
+        if smartStep(turtle.forward) then lastKnownPos.x = tx end
+    elseif dz ~= 0 then
+        faceDirection(dz > 0 and "south" or "north")
+        while turtle.detect() do turtle.dig() end
+        if smartStep(turtle.forward) then lastKnownPos.z = tz end
+    end
 end
 
 local function executeCoordMission(msg)
@@ -247,30 +257,6 @@ local function executeCoordMission(msg)
     end
     turtle.select(1)
     myState = "idle"
-end
-
-local function mineTo(tx, ty, tz)
-    while lastKnownPos.y < ty do
-        while turtle.detectUp() do turtle.digUp() end
-        if smartStep(turtle.up) then lastKnownPos.y = lastKnownPos.y + 1 end
-    end
-    while lastKnownPos.y > ty do
-        while turtle.detectDown() do turtle.digDown() end
-        if smartStep(turtle.down) then lastKnownPos.y = lastKnownPos.y - 1 end
-    end
-
-    local dx = tx - lastKnownPos.x
-    local dz = tz - lastKnownPos.z
-
-    if dx ~= 0 then
-        faceDirection(dx > 0 and "east" or "west")
-        while turtle.detect() do turtle.dig() end
-        if smartStep(turtle.forward) then lastKnownPos.x = tx end
-    elseif dz ~= 0 then
-        faceDirection(dz > 0 and "south" or "north")
-        while turtle.detect() do turtle.dig() end
-        if smartStep(turtle.forward) then lastKnownPos.z = tz end
-    end
 end
 
 -- --- MAIN BOOT ---
