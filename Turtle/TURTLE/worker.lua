@@ -4,15 +4,6 @@ local myState = "idle"
 local hubID = nil
 local lastKnownPos = {x = 0, y = 0, z = 0, facing = "unknown"}
 
-local rowOffsets = {
-    miner = 2,
-    chunky = 4,
-    excavator = 6,
-    lumberjack = 8,
-    farmer = 10,
-    worker = 12
-}
-
 -- Reset rednet to ensure a clean state
 rednet.close()
 peripheral.find("modem", rednet.open)
@@ -96,37 +87,35 @@ local function getGPSData()
     local x, y, z = gps.locate(2)
     if not x then print("GPS lost! Standing still...") return false end
 
-    local facing = "unknown"
-    local moveSuccess = false
-    local movedUp = false
+    lastKnownPos.x, lastKnownPos.y, lastKnownPos.z = x, y, z
+    
+    if lastKnownPos.facing == "unknown" then
 
-    -- move to detect orientation
-    if not turtle.detect() then
-        moveSuccess = turtle.forward()
-    elseif not turtle.detectUp() then
-        moveSuccess = turtle.up()
-        movedUp = true
-    end
+        local moveSuccess = false
+        local movedUp = false
 
-    if moveSuccess then
-        local x2, y2, z2 = gps.locate(2)
-        if x2 then
-            if x2 > x then facing = "east"
-            elseif x2 < x then facing = "west"
-            elseif z2 > z then facing = "south"
-            elseif z2 < z then facing = "north"
-            end
+        -- move to detect orientation
+        if not turtle.detect() then
+            moveSuccess = turtle.forward()
+        elseif not turtle.detectUp() then
+            moveSuccess = turtle.up()
+            movedUp = true
         end
 
-        if movedUp then turtle.down() else turtle.back() end
+        if moveSuccess then
+            local x2, y2, z2 = gps.locate(2)
+            if x2 then
+                if x2 > x then lastKnownPos.facing = "east"
+                elseif x2 < x then lastKnownPos.facing = "west"
+                elseif z2 > z then lastKnownPos.facing = "south"
+                elseif z2 < z then lastKnownPos.facing = "north"
+                end
+            end
+
+            if movedUp then turtle.down() else turtle.back() end
+        end
     end
-
-    lastKnownPos.x, lastKnownPos.y, lastKnownPos.z = x, y, z
-
-    if facing ~= "unknown" then
-        lastKnownPos.facing = facing
-    end
-
+        
     return true
 end
 
@@ -136,21 +125,17 @@ local function getDirID(facing)
 end
 
 local function getStatusReport(checkGPS)
-    local version = "unknown"
+    if checkGPS then getGPSData() end
+
+    local version = "0"
     if fs.exists("/.installer/versions.json") then
         local f = fs.open("/.installer/versions.json", "r")
-        local data = textutils.unserializeJSON(f.readAll())
+        local data = textutils.unserialiseJSON(f.readAll())
         f.close()
-        version = (data and data["TURTLE"]) and data["TURTLE"].version or "0"
+        version = (data and data["TURTLE"]) and data["TURTLE"].version or "?"
     end
 
-    if checkGPS then
-        getGPSData()
-    end
-
-    local posData = lastKnownPos
-
-    local report = {
+    return {
         type = "version_report",
         id = myID,
         name = myName,
@@ -160,10 +145,9 @@ local function getStatusReport(checkGPS)
         fuel = turtle.getFuelLevel(),
         maxFuel = turtle.getFuelLimit(),
         inventory = getInventory(),
-        pos = posData,
-        dir = getDirID(posData.facing)
+        pos = lastKnownPos,
+        dir = getDirID(lastKnownPos.facing)
     }
-    return report
 end
 
 local function broadcastStatus(fullScan)
@@ -314,9 +298,11 @@ while true do
         if msg == "IDENTIFY_TYPE" then
             if lastKnownPos.facing == "unknown" then
                 print("Refresh requested. Determining orientation...")
-                if not getGPSData() then
+                for i = 1, 4 do
+                    if getGPSData() and lastKnownPos.facing ~= "unknown" then
+                        break
+                    end
                     turtle.turnRight()
-                    getGPSData()
                 end
             end
             broadcastStatus(true)
