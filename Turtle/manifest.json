@@ -1,6 +1,6 @@
 {
   "name": "TURTLE",
-  "version": "0.0.1.2.7",
+  "version": "0.0.1.2.8",
   "description": "A script that recieves commands over CCTweaked modems",
   "entry": "startup.lua",
   "installDir": ""
