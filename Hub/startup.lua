@@ -96,48 +96,24 @@ local function coordinateFleetUpdate()
     os.reboot()
 end
 
-local function refreshPairs()
-    print("Scanning fleet...")
-    local miners, chunkies = {}, {}
-    fleet_cache = {} 
-    
-    rednet.broadcast("IDENTIFY_TYPE", version_protocol)
-    local timer = os.startTimer(3)
-    while true do
-        local event, id, msg, protocol = os.pullEvent()
-        if event == "rednet_message" and protocol == version_protocol then
-            if type(msg) == "table" and msg.type == "version_report" then
-                fleet_cache[id] = true 
-                if msg.role == "miner" then table.insert(miners, id)
-                elseif msg.role == "chunky" then table.insert(chunkies, id) end
-                safeSend(msg) -- Forward each status report to the Web UI
-            end
-        elseif event == "timer" and id == timer then break end
-    end
-
-    active_pairs = {}
-    for i = 1, math.min(#miners, #chunkies) do
-        table.insert(active_pairs, { miner = miners[i], chunky = chunkies[i] })
-    end
-    safeSend({ type = "pairs_report", pairs = active_pairs })
-    print("Pairs synced.")
-end
-
 -- Initial startup
 connect()
 
+local hubHeartbeat = os.startTimer(15)
+
 while true do
-    local event = {os.pullEvent()}
+    local event, p1, p2, p3 = os.pullEvent()
     
     -- Handle Web Dashboard Commands
-    if event[1] == "websocket_message" then
-        local msg = event[3]
+    if event == "websocket_message" then
+        local msg = p2
         print("Web CMD: " .. tostring(msg))
 
         if msg == "update fleet" then 
             coordinateFleetUpdate()
         elseif msg == "refresh" then 
-            refreshPairs()
+            print("Broadcasting Global Refresh...")
+            rednet.broadcast("IDENTIFY_TYPE", version_protocol)
         elseif msg == "recall" then
             print("Broadcasting: RECALL")
             rednet.broadcast({type = "RECALL"}, version_protocol)
@@ -145,10 +121,8 @@ while true do
         end
 
     -- Handle Turtle Check-ins
-    elseif event[1] == "rednet_message" then
-        local senderID = event[2]
-        local message = event[3]
-        local protocol = event[4]
+    elseif event == "rednet_message" then
+        local senderID, message, protocol = p1, p2, p3
 
         if protocol == version_protocol and type(message) == "table" then
             -- Store turtle in cache so we know they exist for updates
@@ -159,8 +133,20 @@ while true do
             end
         end
 
+    elseif event == "timer" and p1 == hubHeartbeat then
+
+        safeSend({
+            type = "version_report",
+            id = "HUB",
+            name = "Central Command Hub",
+            role = "hub",
+            v = getHubVersion(),
+            online = true
+        })
+        hubHeartbeat = os.startTimer(15)
+
     -- Auto-reconnect if websocket drops
-    elseif event[1] == "websocket_closed" then
+    elseif event == "websocket_closed" then
         print("Websocket lost!")
         ws = nil
         connect()
