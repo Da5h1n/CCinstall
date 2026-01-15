@@ -210,9 +210,12 @@ broadcastStatus(true)
 print("Booted: " .. myName)
 
 while true do
-    local event, id, msg, protocol = os.pullEvent()
+    local event, id, msg, protocol = os.pullEvent(20)
 
-    if event == "turtle_inventory" then
+    if not event then
+        broadcastStatus(false)
+    
+    elseif event == "turtle_inventory" then
         print("Inventory change detected. Updating Hub...")
         broadcastStatus(false)
 
