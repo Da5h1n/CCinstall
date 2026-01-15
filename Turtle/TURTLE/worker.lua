@@ -94,26 +94,34 @@ end
 
 local function getGPSData()
     local x, y, z = gps.locate(2)
-    if not x then return lastKnownPos end
+    if not x then print("GPS lost! Standing still...") return false end
 
     local facing = "unknown"
+    local moveSuccess = false
+
     -- move to detect orientation
     if not turtle.detect() then
-        if turtle.forward() then
-            local x2, y2, z2 = gps.locate(2)
-            if x2 then
-                if x2 > x then facing = "east"
-                elseif x2 < x then facing = "west"
-                elseif z2 > z then facing = "south"
-                elseif z2 < z then facing = "north"
-                end
-            end
-            turtle.back()
-        end
+        moveSuccess = turtle.forward()
+    elseif not turtle.detectUp() then
+        moveSuccess = turtle.up()
     end
 
-    lastKnownPos = { x = x, y = y, z = z, facing = facing }
-    return lastKnownPos
+    if moveSuccess then
+        local x2, y2, z2 = gps.locate(2)
+        if x2 then
+            if x2 > x then facing = "east"
+            elseif x2 < x then facing = "west"
+            elseif z2 > z then facing = "south"
+            elseif z2 < z then facing = "north"
+            elseif y2 > y then
+                
+            end
+        end
+        if y2 and y2 > y then turtle.down() else turtle.back() end
+    end
+
+    lastKnownPos = { x = x, y = y, z = z, facing = facing}
+    return true
 end
 
 local function getDirID(facing)
@@ -208,13 +216,27 @@ local function gotoCoords(tx, ty, tz)
 end
 
 local function mineTo(tx, ty, tz)
+    local function moveAndSync(moveFunc, axis, delta)
+        if moveFunc() then
+            local nx, ny nz = gps.locate(2)
+            if nx then
+                lastKnownPos.x, lastKnownPos.y, lastKnownPos.z = nz, ny, nz
+            else
+                lastKnownPos[axis] = lastKnownPos[axis] + delta
+            end
+            broadcastStatus(false)
+            return true
+        end
+        return false
+    end
+
     while lastKnownPos.y < ty do
         while turtle.detectUp() do turtle.digUp() end
-        if smartStep(turtle.up) then lastKnownPos.y = lastKnownPos.y + 1 end
+        moveAndSync(turtle.up, "y", 1)
     end
     while lastKnownPos.y > ty do
         while turtle.detectDown() do turtle.digDown() end
-        if smartStep(turtle.down) then lastKnownPos.y = lastKnownPos.y - 1 end
+        moveAndSync(turtle.forward, "y", -1)
     end
 
     local dx = tx - lastKnownPos.x
@@ -223,11 +245,11 @@ local function mineTo(tx, ty, tz)
     if dx ~= 0 then
         faceDirection(dx > 0 and "east" or "west")
         while turtle.detect() do turtle.dig() end
-        if smartStep(turtle.forward) then lastKnownPos.x = tx end
+        moveAndSync(turtle.forward, "x", (dx > 0 and 1 or -1))
     elseif dz ~= 0 then
         faceDirection(dz > 0 and "south" or "north")
         while turtle.detect() do turtle.dig() end
-        if smartStep(turtle.forward) then lastKnownPos.z = tz end
+        moveAndSync(turtle.forward, "z", (dz > 0 and 1 or -1))
     end
 end
 
@@ -279,7 +301,15 @@ while true do
     elseif event == "rednet_message" and protocol == version_protocol then
         hubID = id
         if msg == "IDENTIFY_TYPE" then
+            if lastKnownPos.facing == "unknown" then
+                print("Refresh requested. Determining orientation...")
+                if not getGPSData() then
+                    turtle.turnRight()
+                    getGPSData()
+                end
+            end
             broadcastStatus(true)
+            
         elseif msg == "SEND_VERSION" then
             broadcastStatus(false)
 
