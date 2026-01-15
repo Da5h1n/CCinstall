@@ -223,16 +223,17 @@ while true do
         elseif msg == "SEND_VERSION" then
             broadcastStatus(false)
 
-        elseif type(msg) == "table" and msg.type == "RECALL" then
-            print("Recalling to parking lot...")
-            local zOffset = rowOffsets[myRole] or 10
-            local xOffset = (myID % 10)
+        elseif type(msg) == "table" and msg.type == "RECALL_POSITION" then
+            print("Received parking orders: ".. msg.x ", " .. msg.z)
 
-            local parkX = homePos.x + xOffset
-            local parkY = homePos.y
-            local parkZ = homePos.z + zOffset
+            gotoCoords(msg.x, msg.y, msg.z)
 
-            gotoCoords(parkX, parkY, parkZ)
+            faceDirection("east")
+
+            print("Parked and ready.")
+            myState = "parked"
+            broadcastStatus(false)
+
 
         elseif type(msg) == "table" and msg.type == "INSTALLER_UPDATE" then
             print("Update signal received...")
