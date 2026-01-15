@@ -1,8 +1,7 @@
 local myID = os.getComputerID()
 local version_protocol = "fleet_status"
 local myState = "idle"
-local targetPos = nil
-local homePos = {x = -37, y = 71, z = 1017}
+local hubID = nil
 local lastKnownPos = {x = 0, y = 0, z = 0, facing = "unknown"}
 
 local rowOffsets = {
@@ -112,8 +111,14 @@ local function getGPSData()
             turtle.back()
         end
     end
+
     lastKnownPos = { x = x, y = y, z = z, facing = facing }
     return lastKnownPos
+end
+
+local function getDirID(facing)
+    local mapping = { north = 0, east = 1, south = 2, west = 3}
+    return mapping[facing] or "????"
 end
 
 local function getStatusReport(checkGPS)
@@ -124,6 +129,7 @@ local function getStatusReport(checkGPS)
         f.close()
         version = (data and data["TURTLE"]) and data["TURTLE"].version or "0"
     end
+    local posData = checkGPS and getGPSData() or lastKnownPos
 
     local report = {
         type = "version_report",
@@ -135,7 +141,8 @@ local function getStatusReport(checkGPS)
         fuel = turtle.getFuelLevel(),
         maxFuel = turtle.getFuelLimit(),
         inventory = getInventory(),
-        pos = checkGPS and getGPSData() or lastKnownPos
+        pos = posData,
+        dir = getDirID(posData.facing)
     }
     return report
 end
@@ -200,6 +207,72 @@ local function gotoCoords(tx, ty, tz)
     
 end
 
+local function mineTo(tx, ty, tz)
+    
+    while lastKnownPos.y < ty do
+        while turtle.detectUp() do turtle.digUp() end
+        if smartStep(turtle.up) then lastKnownPos.y = lastKnownPos.y + 1 end
+    end
+    while lastKnownPos.y > ty do 
+        while turtle.detectDown() do turtle.digDown() end
+        if smartStep(turtle.down) then lastKnownPos.y = lastKnownPos.y - 1 end
+    end
+
+    -- horizontal movement
+end
+
+local function executeCoordMission(msg)
+    myState = "mining"
+    broadcastStatus(false)
+
+    gotoCoords(msg.waypoints.mine_down.x, msg.y_level, msg.waypoints.mine_down.z)
+    lastKnownPos = getGPSData()
+
+    for i, coord in ipairs(msg.queue) do
+        if turtle.getFuelLevel() < 100 then break end
+        if turtle.getItemCount(16) > 0 then break end
+
+        mineTo(coord.x, coord.y, coord.z)
+
+        if i % 10 == 0 then broadcastStatus(false) end
+    end
+
+    myState = "returning"
+    gotoCoords(msg.waypoints.mine_up.x, msg.y_level + 1, msg.waypoints.mine_up.z)
+
+    gotoCoords(msg.waypoints.item_drop.x, msg.waypoints.item_drop.y, msg.waypoints.item_drop.z)
+    for i = 1, 16 do
+        turtle.select(i)
+        turtle.drop()
+    end
+    turtle.select(1)
+    myState = "idle"
+end
+
+local function mineTo(tx, ty, tz)
+    while lastKnownPos.y < ty do
+        while turtle.detectUp() do turtle.digUp() end
+        if smartStep(turtle.up) then lastKnownPos.y = lastKnownPos.y + 1 end
+    end
+    while lastKnownPos.y > ty do
+        while turtle.detectDown() do turtle.digDown() end
+        if smartStep(turtle.down) then lastKnownPos.y = lastKnownPos.y - 1 end
+    end
+
+    local dx = tx - lastKnownPos.x
+    local dz = tz - lastKnownPos.z
+
+    if dx ~= 0 then
+        faceDirection(dx > 0 and "east" or "west")
+        while turtle.detect() do turtle.dig() end
+        if smartStep(turtle.forward) then lastKnownPos.x = tx end
+    elseif dz ~= 0 then
+        faceDirection(dz > 0 and "south" or "north")
+        while turtle.detect() do turtle.dig() end
+        if smartStep(turtle.forward) then lastKnownPos.z = tz end
+    end
+end
+
 -- --- MAIN BOOT ---
 local heartbeatTimer = os.startTimer(20)
 print("Initializing system...")
@@ -218,6 +291,7 @@ while true do
         broadcastStatus(false)
 
     elseif event == "rednet_message" and protocol == version_protocol then
+        hubID = id
         if msg == "IDENTIFY_TYPE" then
             broadcastStatus(true)
         elseif msg == "SEND_VERSION" then
@@ -234,6 +308,22 @@ while true do
             myState = "parked"
             broadcastStatus(false)
 
+        elseif type(msg) == "table" and msg.type == "START_MINING" then
+            executeMiningMission(msg)
+
+            rednet.send(hubID, "request_parking", version_protocol)
+
+        elseif type(msg) == "table" and msg.type == "MINER_STEP" then
+
+            if myRole == "chunky" then
+                print("Partner moved. Shadowing...")
+
+                gotoCoords(msg.x, msg.y, msg.z)
+            end
+        
+        elseif type(msg) == "table" and msg.type == "COORD_MISSION" then
+            executeCoordMission(msg)
+            rednet.send(hubID, "request_parking", version_protocol)
 
         elseif type(msg) == "table" and msg.type == "INSTALLER_UPDATE" then
             print("Update signal received...")
