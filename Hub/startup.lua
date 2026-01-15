@@ -143,7 +143,7 @@ while true do
                 local lineNum = roleLineMap[role] or 7
                 local slotNum = counters[role]
 
-                local tx = hubPos.x + 2 + slotNum
+                local tx = hubPos.x - 2 - slotNum
                 local ty = hubPos.y
                 local tz = hubPos.z - 2 - ((lineNum - 1) * 2)
 
