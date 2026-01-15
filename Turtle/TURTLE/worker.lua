@@ -296,15 +296,7 @@ while true do
     elseif event == "rednet_message" and protocol == version_protocol then
         hubID = id
         if msg == "IDENTIFY_TYPE" then
-            if lastKnownPos.facing == "unknown" then
-                print("Refresh requested. Determining orientation...")
-                for i = 1, 4 do
-                    if getGPSData() and lastKnownPos.facing ~= "unknown" then
-                        break
-                    end
-                    turtle.turnRight()
-                end
-            end
+            getGPSData()
             broadcastStatus(true)
             
         elseif msg == "SEND_VERSION" then
