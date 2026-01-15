@@ -120,17 +120,20 @@ local function updatePairs()
 
 end
 
-local function coordinateFleetUpdate()
+local function coordinateFleetUpdate(whitelist)
     local pending = {}
     local count = 0
-    -- Use the cache built from the last "Refresh" or automatic check-ins
-    for id, _ in pairs(fleet_cache) do
-        pending[id] = true
-        count = count + 1
+
+    if whitelist and #whitelist > 0 then
+        for _, id in ipairs(whitelist) do
+            pending[id] = true
+            count = count + 1
+        end
     end
 
     if count == 0 then
         print("No turtles in cache. Try refreshing first.")
+        return
     end
 
     print("Updating Fleet. Waiting for " .. count .. " units...")
@@ -257,7 +260,7 @@ while true do
             updatePairs()
 
         elseif cmd == "update fleet" then
-            coordinateFleetUpdate()
+            coordinateFleetUpdate(msg.whitelist)
 
         elseif cmd == "recall" then
             local hubPos = getHubPos()
