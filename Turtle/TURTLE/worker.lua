@@ -1,7 +1,9 @@
+local myID = os.getComputerID()
+local version_protocol = "fleet_status"
 local myState = "idle"
 local targetPos = nil
 local homePos = {x = -37, y = 71, z = 1017}
-local lastKnownPos = nil
+local lastKnownPos = {x = 0, y = 0, z = 0, facing = "unknown"}
 
 local rowOffsets = {
     miner = 2,
@@ -15,10 +17,6 @@ local rowOffsets = {
 -- Reset rednet to ensure a clean state
 rednet.close()
 peripheral.find("modem", rednet.open)
-sleep(1) -- Wait for modded peripherals (Chunkloaders) to initialize
-
-local version_protocol = "fleet_status"
-
 
 
 local function getRole()
@@ -46,6 +44,25 @@ local function getRole()
     end
     return "worker"
 end
+
+-- Configuration based on detected role
+local myRole = getRole()
+
+
+local roleNames = {
+    miner = "Deep-Core Driller",
+    excavator = "Excavation Unit",
+    lumberjack = "Forester Unit",
+    farmer = "Agricultural Unit",
+    chunky = "Support Loader",
+    combat = "Security Unit",
+    worker = "General Worker"
+}
+
+local myName = (roleNames[myRole] or "Unit") .. " " .. myID
+
+-- Set the physical label in Minecraft
+os.setComputerLabel(myName)
 
 local function getInventory()
     local inv = {}
@@ -184,26 +201,6 @@ local function gotoCoords(tx, ty, tz)
 end
 
 -- --- MAIN BOOT ---
-
--- Configuration based on detected role
-local myRole = getRole()
-local myID = os.getComputerID()
-
-local roleNames = {
-    miner = "Deep-Core Driller",
-    excavator = "Excavation Unit",
-    lumberjack = "Forester Unit",
-    farmer = "Agricultural Unit",
-    chunky = "Support Loader",
-    combat = "Security Unit",
-    worker = "General Worker"
-}
-
-local myName = (roleNames[myRole] or "Unit") .. " " .. myID
-
--- Set the physical label in Minecraft
-os.setComputerLabel(myName)
-
 
 print("Initializing system...")
 broadcastStatus(true)
