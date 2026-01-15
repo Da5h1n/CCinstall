@@ -134,6 +134,10 @@ while true do
             coordinateFleetUpdate()
         elseif msg == "refresh" then 
             refreshPairs()
+        elseif msg == "recall" then
+            print("Dashboard command: RECALL ALL")
+            rednet.broadcast({type = "RECALL"}, version_protocol)
+            safeSend({type="turtle_response", id="HUB", content="Recall signal sent to fleet."})
         end
 
     -- Handle Turtle Check-ins
