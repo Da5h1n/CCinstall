@@ -6,6 +6,15 @@ local ws = nil
 local active_pairs = {}
 local fleet_cache = {} 
 
+local function getHubPos()
+    local x, y, z = gps.locate(2)
+    if not x then
+        print("Error: Hub cannot find GPS location!")
+        return nil
+    end
+    return {x = x, y = y, z = z}
+end
+
 local function safeSend(data)
     if ws then
         local msg = type(data) == "table" and textutils.serializeJSON(data) or tostring(data)
@@ -111,13 +120,22 @@ while true do
 
         if msg == "update fleet" then 
             coordinateFleetUpdate()
+
         elseif msg == "refresh" then 
             print("Broadcasting Global Refresh...")
             rednet.broadcast("IDENTIFY_TYPE", version_protocol)
+
         elseif msg == "recall" then
-            print("Broadcasting: RECALL")
-            rednet.broadcast({type = "RECALL"}, version_protocol)
-            safeSend({type="turtle_response", id="HUB", content="Recall signal sent to fleet."})
+            local hubPos = getHubPos()
+            if hubPos then
+                print("Broadcasting recall with Hub position")
+                rednet.broadcast({
+                    type = "RECALL",
+                    hubx = hubPos.x,
+                    huby = hubPos.y,
+                    hubz = hubPos.z
+                }, version_protocol)
+            end
         end
 
     -- Handle Turtle Check-ins
