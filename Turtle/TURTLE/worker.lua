@@ -39,7 +39,6 @@ local lastKnownPos = {
 rednet.close()
 peripheral.find("modem", rednet.open)
 
-
 local function updateFacing(newFacing)
     lastKnownPos.facing = newFacing
     memory.facing = newFacing
@@ -108,22 +107,40 @@ local function getInventory()
     return inv
 end
 
-local function smartStep(direction)
-    local retries = 0
-    local oldState = myState
-    while not direction() do
-        myState = "BLOCKED"
-        broadcastStatus(false)
+local function getStatusReport(checkGPS)
+    if checkGPS then getGPSData() end
 
-        if retries >= 3 then
-            myState = oldState
-            return false
-        end
-        sleep(1)
-        retries = retries + 1
+    local currentFuel = turtle.getFuelLevel()
+    local fuelLimit = turtle.getFuelLimit()
+
+    local isLow = (currentFuel < 1000) or (currentFuel < (fuelLimit * 0.1))
+
+    local version = "0"
+    if fs.exists("/.installer/versions.json") then
+        local f = fs.open("/.installer/versions.json", "r")
+        local data = textutils.unserialiseJSON(f.readAll())
+        f.close()
+        version = (data and data["TURTLE"]) and data["TURTLE"].version or "?"
     end
-    if myState ~= "PARKED" then myState = "MOVING" end
-    return true
+
+    return {
+        type = "version_report",
+        id = myID,
+        name = myName,
+        role = myRole,
+        v = version,
+        state = myState,
+        fuel = currentFuel,
+        maxFuel = fuelLimit,
+        lowFuel = isLow,
+        inventory = getInventory(),
+        pos = lastKnownPos,
+        dir = getDirID(lastKnownPos.facing)
+    }
+end
+
+local function broadcastStatus(fullScan)
+    rednet.broadcast(getStatusReport(fullScan), version_protocol)
 end
 
 function syncMove(moveFunc, direction)
@@ -185,6 +202,24 @@ end
 local function turnRight() syncTurn(true) end
 local function turnLeft() syncTurn(false) end
 
+local function smartStep(direction)
+    local retries = 0
+    local oldState = myState
+    while not direction() do
+        myState = "BLOCKED"
+        broadcastStatus(false)
+
+        if retries >= 3 then
+            myState = oldState
+            return false
+        end
+        sleep(1)
+        retries = retries + 1
+    end
+    if myState ~= "PARKED" then myState = "MOVING" end
+    return true
+end
+
 local function getGPSData(forceMove)
     local x, y, z = gps.locate(2)
     if not x then print("GPS lost!") return false end
@@ -240,11 +275,6 @@ local function getGPSData(forceMove)
     return true
 end
 
-local function getDirID(facing)
-    local mapping = { north = 0, east = 1, south = 2, west = 3}
-    return mapping[facing] or "????"
-end
-
 local function faceDirection(dir)
     if lastKnownPos.facing == "unknown" then getGPSData() end
     if lastKnownPos.facing == dir then return end
@@ -262,42 +292,6 @@ local function faceDirection(dir)
             turnRight()
         end
     end
-end
-
-local function getStatusReport(checkGPS)
-    if checkGPS then getGPSData() end
-
-    local currentFuel = turtle.getFuelLevel()
-    local fuelLimit = turtle.getFuelLimit()
-
-    local isLow = (currentFuel < 1000) or (currentFuel < (fuelLimit * 0.1))
-
-    local version = "0"
-    if fs.exists("/.installer/versions.json") then
-        local f = fs.open("/.installer/versions.json", "r")
-        local data = textutils.unserialiseJSON(f.readAll())
-        f.close()
-        version = (data and data["TURTLE"]) and data["TURTLE"].version or "?"
-    end
-
-    return {
-        type = "version_report",
-        id = myID,
-        name = myName,
-        role = myRole,
-        v = version,
-        state = myState,
-        fuel = currentFuel,
-        maxFuel = fuelLimit,
-        lowFuel = isLow,
-        inventory = getInventory(),
-        pos = lastKnownPos,
-        dir = getDirID(lastKnownPos.facing)
-    }
-end
-
-local function broadcastStatus(fullScan)
-    rednet.broadcast(getStatusReport(fullScan), version_protocol)
 end
 
 local function gotoCoords(tx, ty, tz)
@@ -339,6 +333,11 @@ local function gotoCoords(tx, ty, tz)
     targetPos = nil
     broadcastStatus(false)
     
+end
+
+local function getDirID(facing)
+    local mapping = { north = 0, east = 1, south = 2, west = 3}
+    return mapping[facing] or "????"
 end
 
 local function mineTo(tx, ty, tz)
