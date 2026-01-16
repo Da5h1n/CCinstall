@@ -341,25 +341,31 @@ while true do
         -- handle rednet messages
     elseif event == "rednet_message" then
         local senderID, message, protocol = p1, p2, p3
-        if protocol == version_protocol then
-            if type(message) == "table" then
-
-                local isNew = fleet_cache[senderID] == nil
-
-                fleet_cache[senderID] = true
-                if message.role then
-                    fleet_roles[senderID] = message.role
-                end
-
-                safeSend(message)
-
-                if isNew then
-                    updatePairs()
-                end
+        if protocol == version_protocol and type(message) == "table" then
             
-            elseif message == "request_parking" then
-                print("Turtle " .. senderID .. " requested parking.")
-                sendParkingOrder(senderID)
+
+            local isNew = fleet_cache[senderID] == nil
+
+            fleet_cache[senderID] = true
+            if message.role then
+                fleet_roles[senderID] = message.role
+            end
+
+            safeSend(message)
+
+            if isNew then
+                updatePairs()
+            end
+            
+        elseif message == "request_parking" then
+            print("Turtle " .. senderID .. " requested parking.")
+            sendParkingOrder(senderID)
+
+        elseif message.lowFuel and (message.state == "IDLE" or message.state == "PARKED") then
+            local waypoints = getAbsoluteWaypoints()
+            if waypoints then 
+                print("Turtle " .. senderID .. " is low on fuel! Sending to station.")
+                rednet.send(senderID, { type = "REFUEL_ORDER", waypoints = waypoints }, version_protocol)
             end
         end
         -- Heartbeat timer
