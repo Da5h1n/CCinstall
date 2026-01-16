@@ -2,12 +2,49 @@ local myID = os.getComputerID()
 local version_protocol = "fleet_status"
 local myState = "idle"
 local hubID = nil
-local lastKnownPos = {x = 0, y = 0, z = 0, facing = "unknown"}
+local SETTINGS_FILE = "/.unit_data.json"
+
+local function saveSettings(data)
+    local f = fs.open(SETTINGS_FILE, "w")
+    f.write(textutils.serialiseJSON(data))
+    f.close()
+end
+
+local function loadSettings()
+    local defaultValues = {
+        facing = "unknown"
+    }
+
+    if not fs.exists(SETTINGS_FILE) then
+        return defaultValues
+    end
+
+    local f = fs.open(SETTINGS_FILE, "r")
+    local content = f.readAll()
+    f.close()
+
+    local data = textutils.unserialiseJSON(content)
+    return data or defaultValues
+end
+
+local memory = loadSettings()
+local lastKnownPos = {
+    x = 0,
+    y = 0,
+    z = 0,
+    facing = memory.facing
+}
 
 -- Reset rednet to ensure a clean state
 rednet.close()
 peripheral.find("modem", rednet.open)
 
+
+local function updateFacing(newFacing)
+    lastKnownPos.facing = newFacing
+    memory.facing = newFacing
+    saveSettings(memory)
+end
 
 local function getRole()
     -- 1. Check for Chunkloader (Standard Peripheral)
@@ -89,13 +126,14 @@ local function smartStep(direction)
     return true
 end
 
-local function getGPSData()
+local function getGPSData(forceMove)
     local x, y, z = gps.locate(2)
-    if not x then print("GPS lost! Standing still...") return false end
+    if not x then print("GPS lost!") return false end
 
     lastKnownPos.x, lastKnownPos.y, lastKnownPos.z = x, y, z
     
-    if lastKnownPos.facing == "unknown" then
+    if lastKnownPos.facing == "unknown" or forceMove then
+        print("Calibrating facing...")
         local moveSuccess = false
         local movedUp = false
         local turns = 0
@@ -127,7 +165,7 @@ local function getGPSData()
                 for i, v in ipairs(dirs) do if v == detFacing then currentIdx = i end end
 
                 local originalIdx = (currentIdx - turns - 1) % 4 + 1
-                lastKnownPos.facing = dirs[originalIdx]
+                updateFacing(dirs[originalIdx])
             end
 
             if movedUp then turtle.down() else turtle.back() end
@@ -141,6 +179,23 @@ end
 local function getDirID(facing)
     local mapping = { north = 0, east = 1, south = 2, west = 3}
     return mapping[facing] or "????"
+end
+
+local function faceDirection(dir)
+    local directions = {"north", "east", "south", "west"}
+    local function getDirIdx(d)
+        for i, v in ipairs(directions) do if v == d then return i end end
+        return 1
+    end
+
+    if lastKnownPos.facing == "unknown" then getGPSData() end
+
+    while lastKnownPos.facing ~= dir do
+        turtle.turnRight()
+        local curIdx = getDirIdx(lastKnownPos.facing)
+        local nextIdx = (curIdx % 4) + 1
+        updateFacing(directions[nextIdx])
+    end
 end
 
 local function getStatusReport(checkGPS)
@@ -171,23 +226,6 @@ end
 
 local function broadcastStatus(fullScan)
     rednet.broadcast(getStatusReport(fullScan), version_protocol)
-end
-
-local function faceDirection(dir)
-    local directions = {"north", "east", "south", "west"}
-    local function getDirIdx(d)
-        for i, v in ipairs(directions) do if v == d then return i end end
-        return 1
-    end
-
-    if lastKnownPos.facing == "unknown" then getGPSData() end
-
-    while lastKnownPos.facing ~= dir do
-        turtle.turnRight()
-        local curIdx = getDirIdx(lastKnownPos.facing)
-        local nextIdx = (curIdx % 4) + 1
-        lastKnownPos.facing = directions[nextIdx]
-    end
 end
 
 local function gotoCoords(tx, ty, tz)
@@ -298,6 +336,7 @@ end
 -- --- MAIN BOOT ---
 local heartbeatTimer = os.startTimer(20)
 print("Initializing system...")
+getGPSData(true)
 broadcastStatus(true)
 print("Booted: " .. myName)
 
@@ -337,41 +376,49 @@ while true do
         end
 
         if isAllowed then
-            if command == "INSTALLER_UPDATE" then
+            if msgType == "INSTALLER_UPDATE" then
                 print("Update signal received...")
-                rednet.send(id, {type = "turtle_response", id = myID, content = "Update starting..."}, version_protocol)
+                rednet.send(id, {type = "turtle_response", id = myID, content = "Updating..."}, version_protocol)
                 
-                -- Ensure we use an absolute path to the root
-                local installerPath = "/installer"
+                local path = "/installer"
+                -- 1. Ensure fresh download
+                if fs.exists(path) then fs.delete(path) end
                 
-                if not fs.exists(installerPath) then
-                    print("Downloading installer...")
-                    -- Force download to the root
-                    shell.run("pastebin", "get", "S3HkJqdw", installerPath)
-                end
+                print("Downloading installer...")
+                shell.run("pastebin", "get", "S3HkJqdw", path)
 
-                -- Final check before execution
-                if fs.exists(installerPath) then
-                    print("Running: " .. installerPath)
-                    -- Use the absolute path to avoid "no such program"
-                    shell.run(installerPath, "update", msg.pkg or "TURTLE")
-                    
-                    rednet.send(id, {type = "update_complete", id = myID}, version_protocol)
-                    sleep(1)
-                    os.reboot()
+                if fs.exists(path) then
+                    print("Executing update...")
+                    -- 2. Use dofile to execute the script directly from the path
+                    -- This bypasses the "No such program" shell error
+                    local success, err = pcall(function()
+                        -- This effectively runs: installer update [PKG]
+                        local pkg = msg.pkg or "TURTLE"
+                        shell.run(path, "update", pkg)
+                    end)
+
+                    if success then
+                        rednet.send(id, {type = "update_complete", id = myID}, version_protocol)
+                        sleep(1)
+                        os.reboot()
+                    else
+                        print("Exec Error: " .. tostring(err))
+                        rednet.send(id, {type = "turtle_response", id = myID, content = "Exec fail: "..tostring(err)}, version_protocol)
+                    end
                 else
-                    print("Error: Installer not found!")
-                    rednet.send(id, {type = "turtle_response", id = myID, content = "Update failed: No installer file"}, version_protocol)
+                    print("Download failed.")
+                    rednet.send(id, {type = "turtle_response", id = myID, content = "Download failed"}, version_protocol)
                 end
 
             elseif command == "IDENTIFY_TYPE" then
-                getGPSData()
+                getGPSData(true)
                 broadcastStatus(true)
 
             elseif command == "SEND_VERSION" then
                 broadcastStatus(false)
 
             elseif msgType == "RECALL_POSITION" then
+                getGPSData(true)
                 print("Parking at: ".. msg.x .. ", " .. msg.z)
                 gotoCoords(msg.x, msg.y, msg.z)
                 faceDirection("east")
@@ -396,6 +443,7 @@ while true do
 
                 myState = "IDLE"
                 broadcastStatus(false)
+
             end
         end
     end
