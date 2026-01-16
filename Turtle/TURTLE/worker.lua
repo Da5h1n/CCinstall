@@ -72,14 +72,20 @@ local function getInventory()
 end
 
 local function smartStep(direction)
-    local maxRetries = 3
     local retries = 0
+    local oldState = myState
     while not direction() do
-        if retries >= maxRetries then return false end
-        print("Obstacle detected! Waiting...")
+        myState = "BLOCKED"
+        broadcastStatus(false)
+
+        if retries >= 3 then
+            myState = oldState
+            return false
+        end
         sleep(1)
         retries = retries + 1
     end
+    if myState ~= "PARKED" then myState = "MOVING" end
     return true
 end
 
@@ -90,32 +96,45 @@ local function getGPSData()
     lastKnownPos.x, lastKnownPos.y, lastKnownPos.z = x, y, z
     
     if lastKnownPos.facing == "unknown" then
-
         local moveSuccess = false
         local movedUp = false
+        local turns = 0
 
-        -- move to detect orientation
-        if not turtle.detect() then
-            moveSuccess = turtle.forward()
-        elseif not turtle.detectUp() then
-            moveSuccess = turtle.up()
-            movedUp = true
+        while not moveSuccess and turns < 4 do
+            if not turtle.detect() then
+                moveSuccess = turtle.forward()
+            elseif not turtle.detectUp() then
+                moveSuccess = turtle.up()
+                movedUp = true
+            else
+                turtle.turnRight()
+                turns = turns + 1
+            end
         end
 
         if moveSuccess then
             local x2, y2, z2 = gps.locate(2)
             if x2 then
+                local detFacing = "unknown"
                 if x2 > x then lastKnownPos.facing = "east"
                 elseif x2 < x then lastKnownPos.facing = "west"
                 elseif z2 > z then lastKnownPos.facing = "south"
                 elseif z2 < z then lastKnownPos.facing = "north"
                 end
+
+                local dirs = {"north", "east", "south", "west"}
+                local currentIdx = 1
+                for i, v in ipairs(dirs) do if v == detFacing then currentIdx = i end end
+
+                local originalIdx = (currentIdx - turns - 1) % 4 + 1
+                lastKnownPos.facing = dirs[originalIdx]
             end
 
             if movedUp then turtle.down() else turtle.back() end
         end
+
+        for i = 1, turns do turtle.turnLeft() end
     end
-        
     return true
 end
 
@@ -295,7 +314,15 @@ while true do
 
     elseif event == "rednet_message" and protocol == version_protocol then
         hubID = id
-        if msg == "IDENTIFY_TYPE" then
+        if type(msg) == "table" and msg.type == "DIRECT_COMMAND" then
+            print("Executing: " .. msg.cmd)
+            myState = "BUSY"
+            broadcastStatus(false)
+            shell.run(msg.cmd)
+            myState = "idle"
+            broadcastStatus(false)
+
+        elseif msg == "IDENTIFY_TYPE" then
             getGPSData()
             broadcastStatus(true)
             
