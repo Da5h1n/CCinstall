@@ -367,6 +367,45 @@ local function executeCoordMission(msg)
     myState = "idle"
 end
 
+local function autoRefuel(waypoints)
+    if not waypoints or not waypoints.fuel_chest then
+        print("Error No fuel station coordinates")
+        return false
+    end
+
+    local oldState = myState
+    myState = "refueling"
+    broadcastStatus(false)
+
+    print("Navigating to Fuel Station...")
+
+    gotoCoords(waypoints.fuel_chest.x - 1, waypoints.fuel_chest.y, waypoints.fuel_chest.z)
+
+    faceDirection("east") -- FRONT TOWARDS CHEST
+
+    local fueled = false
+    for i = 1, 16 do
+        if turtle.getItemCount(i) == 0 then
+            turtle.select(i)
+            while turtle.suck() do
+                if turtle.refuel(0) then
+                    turtle.refuel()
+                    fueled = true
+                else
+                    turtle.drop()
+                    break
+                end
+                if turtle.getFuelLevel() > 1000 then break end
+            end
+        end
+        if fueled then break end
+    end
+
+    turtle.select(1)
+    myState = "IDLE"
+    broadcastStatus(false)
+end
+
 -- --- MAIN BOOT ---
 
 print("Initializing system...")
@@ -452,6 +491,11 @@ while true do
 
             elseif command == "SEND_VERSION" then
                 broadcastStatus(false)
+
+            elseif msgType == "REFUEL_ORDER" then
+                print("Hub ordered refueling")
+                autoRefuel(msg.waypoints)
+                rednet.send(hubID, "request_parking", version_protocol)
 
             elseif msgType == "RECALL_POSITION" then
                 getGPSData(true)
