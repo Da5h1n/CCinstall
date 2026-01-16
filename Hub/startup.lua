@@ -341,36 +341,39 @@ while true do
         -- handle rednet messages
     elseif event == "rednet_message" then
         local senderID, message, protocol = p1, p2, p3
-        print("Received status from " .. senderID .. " | Fuel: " .. tostring(message.fuel) .. " | Low: " .. tostring(message.lowFuel) .. " | State: " .. tostring(message.state))
-        if protocol == version_protocol and type(message) == "table" then
-            
+        if protocol == version_protocol then
+            if type(message) == "table" then
+                    
+                local isNew = fleet_cache[senderID] == nil
 
-            local isNew = fleet_cache[senderID] == nil
+                fleet_cache[senderID] = true
+                if message.role then fleet_roles[senderID] = message.role end
 
-            fleet_cache[senderID] = true
-            if message.role then
-                fleet_roles[senderID] = message.role
+                safeSend(message)
+                if isNew then updatePairs() end
+
+                if message.lowFuel then
+                    local state = tostring(message.state or ""):lower()
+                    if state == "idle" or state == "parked" then
+                        local waypoints = getAbsoluteWaypoints()
+                        if waypoints then
+                            print("Turtle " .. senderID .. " is low on fuel! Sending to station.")
+                            rednet.send(senderID, { type = "REFUEL_ORDER", waypoints = waypoints }, version_protocol)
+
+                            safeSend({
+                                type = "turtle_response",
+                                id = senderID,
+                                content = "Auto-refuel triggered by Hub."
+                            })
+                        end
+                    end
+                end
+
+            elseif message == "request_parking" then
+                print("Turtle " .. senderID .. " requested parking.")
+                sendParkingOrder(senderID)
             end
-
-            safeSend(message)
-
-            if isNew then
-                updatePairs()
-            end
-
-        elseif message.lowFuel == true then
-            local waypoints = getAbsoluteWaypoints()
-            if waypoints then 
-                print("Turtle " .. senderID .. " is low on fuel! Sending to station.")
-                rednet.send(senderID, { type = "REFUEL_ORDER", waypoints = waypoints }, version_protocol)
-            end
-        
-            
-        elseif message == "request_parking" then
-            print("Turtle " .. senderID .. " requested parking.")
-            sendParkingOrder(senderID)
         end
-
         -- Heartbeat timer
     elseif event == "timer" and p1 == hubHeartbeat then
         safeSend({
