@@ -337,7 +337,7 @@ while true do
         end
 
         if isAllowed then
-            if msgType == "INSTALLER_UPDATE" then
+            if command == "INSTALLER_UPDATE" then
                 print("Update signal received...")
                 rednet.send(id, {type = "turtle_response", id = myID, content = "Update starting..."}, version_protocol)
                 
