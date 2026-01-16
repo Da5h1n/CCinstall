@@ -126,6 +126,65 @@ local function smartStep(direction)
     return true
 end
 
+function syncMove(moveFunc, direction)
+
+    if turtle.getFuelLevel() == 0 then
+        myState = "NO_FUEL"
+        broadcastStatus(false)
+        print("CRITICAL: Out of fuel!")
+        return false
+    end
+
+    if moveFunc() then
+        if direction == "up" then
+            lastKnownPos.y = lastKnownPos.y + 1
+
+        elseif direction == "down" then
+            lastKnownPos.y = lastKnownPos.y - 1
+        
+        elseif direction == "forward" then
+            local f = lastKnownPos.facing
+            if f == "north" then lastKnownPos.z = lastKnownPos.z - 1
+            elseif f == "south" then lastKnownPos.z = lastKnownPos.z + 1
+            elseif f == "east" then lastKnownPos.x = lastKnownPos.x + 1
+            elseif f == "west" then lastKnownPos.x = lastKnownPos.x - 1
+            end
+        elseif direction == "back" then
+            local f = lastKnownPos.facing
+            if f == "north" then lastKnownPos.z = lastKnownPos.z + 1
+            elseif f == "south" then lastKnownPos.z = lastKnownPos.z - 1
+            elseif f == "east"  then lastKnownPos.x = lastKnownPos.x - 1
+            elseif f == "west"  then lastKnownPos.x = lastKnownPos.x + 1
+            end
+        end
+        broadcastStatus(false)
+        return true
+    end
+    return false
+end
+
+function syncTurn(isRight)
+    local dirs = {"north", "east", "south", "west"}
+    local currentIdx = 1
+
+    for i, v in ipairs(dirs) do 
+        if v == lastKnownPos.facing then currentIdx = i end
+    end
+    
+    if isRight then
+        turtle.turnRight()
+        currentIdx = (currentIdx % 4) + 1
+    else
+        turtle.turnLeft()
+        currentIdx = (currentIdx - 2 + 4) % 4 + 1
+    end
+
+    updateFacing(dirs[currentIdx])
+end
+
+local function turnRight() syncTurn(true) end
+local function turnLeft() syncTurn(false) end
+
 local function getGPSData(forceMove)
     local x, y, z = gps.locate(2)
     if not x then print("GPS lost!") return false end
@@ -145,7 +204,8 @@ local function getGPSData(forceMove)
                 moveSuccess = turtle.up()
                 movedUp = true
             else
-                turtle.turnRight()
+                print("Blocked... turning...")
+                turnRight()
                 turns = turns + 1
             end
         end
@@ -154,15 +214,19 @@ local function getGPSData(forceMove)
             local x2, y2, z2 = gps.locate(2)
             if x2 then
                 local detFacing = "unknown"
-                if x2 > x then lastKnownPos.facing = "east"
-                elseif x2 < x then lastKnownPos.facing = "west"
-                elseif z2 > z then lastKnownPos.facing = "south"
-                elseif z2 < z then lastKnownPos.facing = "north"
+                if x2 > x then detFacing = "east"
+                elseif x2 < x then detFacing = "west"
+                elseif z2 > z then detFacing = "south"
+                elseif z2 < z then detFacing = "north"
                 end
 
                 local dirs = {"north", "east", "south", "west"}
                 local currentIdx = 1
-                for i, v in ipairs(dirs) do if v == detFacing then currentIdx = i end end
+                for i, v in ipairs(dirs) do
+                    if v == detFacing then
+                        currentIdx = i
+                    end
+                end
 
                 local originalIdx = (currentIdx - turns - 1) % 4 + 1
                 updateFacing(dirs[originalIdx])
@@ -171,7 +235,7 @@ local function getGPSData(forceMove)
             if movedUp then turtle.down() else turtle.back() end
         end
 
-        for i = 1, turns do turtle.turnLeft() end
+        for i = 1, turns do turnLeft() end
     end
     return true
 end
@@ -182,24 +246,31 @@ local function getDirID(facing)
 end
 
 local function faceDirection(dir)
-    local directions = {"north", "east", "south", "west"}
-    local function getDirIdx(d)
-        for i, v in ipairs(directions) do if v == d then return i end end
-        return 1
-    end
-
     if lastKnownPos.facing == "unknown" then getGPSData() end
+    if lastKnownPos.facing == dir then return end
 
-    while lastKnownPos.facing ~= dir do
-        turtle.turnRight()
-        local curIdx = getDirIdx(lastKnownPos.facing)
-        local nextIdx = (curIdx % 4) + 1
-        updateFacing(directions[nextIdx])
+    local dirs = {north=1, east=2, south=3, west=4}
+    local start = dirs[lastKnownPos.facing]
+    local target = dirs[dir]
+
+    local diff = (target - start + 4) % 4
+
+    if diff == 3 then
+        turnLeft()
+    else
+        for i = 1, diff do
+            turnRight()
+        end
     end
 end
 
 local function getStatusReport(checkGPS)
     if checkGPS then getGPSData() end
+
+    local currentFuel = turtle.getFuelLevel()
+    local fuelLimit = turtle.getFuelLimit()
+
+    local isLow = (currentFuel < 1000) or (currentFuel < (fuelLimit * 0.1))
 
     local version = "0"
     if fs.exists("/.installer/versions.json") then
@@ -216,8 +287,9 @@ local function getStatusReport(checkGPS)
         role = myRole,
         v = version,
         state = myState,
-        fuel = turtle.getFuelLevel(),
-        maxFuel = turtle.getFuelLimit(),
+        fuel = currentFuel,
+        maxFuel = fuelLimit,
+        lowFuel = isLow,
         inventory = getInventory(),
         pos = lastKnownPos,
         dir = getDirID(lastKnownPos.facing)
@@ -235,30 +307,32 @@ local function gotoCoords(tx, ty, tz)
 
     -- flight level
     while lastKnownPos.y < ty + 2 do
-        if smartStep(turtle.up) then lastKnownPos.y = lastKnownPos.y + 1 else break end
+        if not smartStep(function() return syncMove(turtle.up, "up") end) then
+            break
+        end
     end
 
     -- X alignment
     while lastKnownPos.x ~= tx do
         faceDirection(lastKnownPos.x < tx and "east" or "west")
-        if smartStep(turtle.forward) then
-            lastKnownPos.x = (lastKnownPos.x < tx) and lastKnownPos.x + 1 or lastKnownPos.x - 1 
+        if not smartStep(function() return syncMove(turtle.forward, "forward") end) then
+            break
         end
-        if math.abs(lastKnownPos.x % 5) == 0 then broadcastStatus(false) end
     end
 
     -- Z alignment
     while lastKnownPos.z ~= tz do
         faceDirection(lastKnownPos.z < tz and "south" or "north")
-        if smartStep(turtle.forward) then
-            lastKnownPos.z = (lastKnownPos.z < tz) and lastKnownPos.z + 1 or lastKnownPos.z - 1
+        if not smartStep(function() return syncMove(turtle.forward, "forward") end) then
+            break
         end
-        if math.abs(lastKnownPos.z % 5) == 0 then broadcastStatus(false) end
     end
 
     -- Y desent
     while lastKnownPos.y > ty do
-        if smartStep(turtle.down) then lastKnownPos.y = lastKnownPos.y - 1 else break end
+        if not smartStep(function() return syncMove(turtle.down, "down") end) then
+            break
+        end
     end
 
     myState = "parked"
@@ -268,27 +342,13 @@ local function gotoCoords(tx, ty, tz)
 end
 
 local function mineTo(tx, ty, tz)
-    local function moveAndSync(moveFunc, axis, delta)
-        if moveFunc() then
-            local nx, ny, nz = gps.locate(2)
-            if nx then
-                lastKnownPos.x, lastKnownPos.y, lastKnownPos.z = nx, ny, nz
-            else
-                lastKnownPos[axis] = lastKnownPos[axis] + delta
-            end
-            broadcastStatus(false)
-            return true
-        end
-        return false
-    end
-
     while lastKnownPos.y < ty do
         while turtle.detectUp() do turtle.digUp() end
-        moveAndSync(turtle.up, "y", 1)
+        syncMove(turtle.up, "up")
     end
     while lastKnownPos.y > ty do
         while turtle.detectDown() do turtle.digDown() end
-        moveAndSync(turtle.down, "y", -1)
+        syncMove(turtle.down, "down")
     end
 
     local dx = tx - lastKnownPos.x
@@ -296,12 +356,18 @@ local function mineTo(tx, ty, tz)
 
     if dx ~= 0 then
         faceDirection(dx > 0 and "east" or "west")
-        while turtle.detect() do turtle.dig() end
-        moveAndSync(turtle.forward, "x", (dx > 0 and 1 or -1))
-    elseif dz ~= 0 then
+        while lastKnownPos.x ~= tx do
+            while turtle.detect() do turtle.dig() end
+            if not syncMove(turtle.forward, "forward") then break end
+        end
+    end
+
+    if dz ~= 0 then
         faceDirection(dz > 0 and "south" or "north")
-        while turtle.detect() do turtle.dig() end
-        moveAndSync(turtle.forward, "z", (dz > 0 and 1 or -1))
+        while lastKnownPos.z ~= tz do
+            while turtle.detect() do turtle.dig() end
+            if not syncMove(turtle.forward, "forward") then break end
+        end
     end
 end
 
