@@ -202,7 +202,7 @@ end
 local function relayTargetCommand(targetID, command, whitelist)
     if targetID == "broadcast" then
         print("Broadcasting CMD ["..command.."] to all units.")
-        rednet.send(id, {
+        rednet.broadcast({
             type = "DIRECT_COMMAND",
             cmd = command,
             whitelist = whitelist
@@ -268,7 +268,7 @@ while true do
 
         -- targeted Commands
         if msg.target and msg.target ~= "HUB" then
-            relayTargetCommand(msg.target, msg.cmd, msg.whitelist)
+            relayTargetCommand(msg.target, cmd, msg.whitelist)
         -- local hub commands
         elseif cmd == "reboot" then
             os.reboot()
