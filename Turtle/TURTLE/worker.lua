@@ -116,7 +116,7 @@ local function getInventory()
     return inv
 end
 
-local function getDirID(facing)
+getDirID = function(facing)
     local mapping = { north = 0, east = 1, south = 2, west = 3}
     return mapping[facing] or "????"
 end
