@@ -98,8 +98,11 @@ local function updatePairs()
     local chunky = {}
 
     for id, role in pairs(fleet_roles) do
-        if role == "miner" then table.insert(miners, tonumber(id))
-        elseif role == "chunky" then table.insert(chunky, tonumber(id)) end
+        local numericID = tonumber(id)
+        if numericID then
+            if role == "miner" then table.insert(miners, numericID)
+            elseif role == "chunky" then table.insert(chunky, numericID) end
+        end
     end
 
     table.sort(miners)
@@ -330,9 +333,20 @@ while true do
         local senderID, message, protocol = p1, p2, p3
         if protocol == version_protocol then
             if type(message) == "table" then
+
+                local isNew = fleet_cache[senderID] == nil
+
                 fleet_cache[senderID] = true
-                if message.role then fleet_roles[senderID] = message.role end
+                if message.role then
+                    fleet_roles[senderID] = message.role
+                end
+
                 safeSend(message)
+
+                if isNew then
+                    updatePairs()
+                end
+            
             elseif message == "request_parking" then
                 print("Turtle " .. senderID .. " requested parking.")
                 sendParkingOrder(senderID)
