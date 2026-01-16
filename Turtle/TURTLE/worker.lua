@@ -116,6 +116,11 @@ local function getInventory()
     return inv
 end
 
+local function getDirID(facing)
+    local mapping = { north = 0, east = 1, south = 2, west = 3}
+    return mapping[facing] or "????"
+end
+
 local function getStatusReport(checkGPS)
     if checkGPS then getGPSData() end
 
@@ -342,11 +347,6 @@ local function gotoCoords(tx, ty, tz)
     targetPos = nil
     broadcastStatus(false)
     
-end
-
-local function getDirID(facing)
-    local mapping = { north = 0, east = 1, south = 2, west = 3}
-    return mapping[facing] or "????"
 end
 
 local function mineTo(tx, ty, tz)
