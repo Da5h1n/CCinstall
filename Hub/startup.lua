@@ -199,18 +199,26 @@ local function sendParkingOrder(id)
     print("Sent individual parking order to " .. id)
 end
 
-local function relayTargetCommand(targetID, command)
-    local id = tonumber(targetID)
-    if id then
-        print("Relaying CMD ["..command .. "] to Turtle "..targetID)
+local function relayTargetCommand(targetID, command, whitelist)
+    if targetID == "broadcast" then
+        print("Broadcasting CMD ["..command.."] to all units.")
         rednet.send(id, {
             type = "DIRECT_COMMAND",
-            cmd = command
+            cmd = command,
+            whitelist = whitelist
         }, version_protocol)
     else
-       print("Error: Invalid Target ID: " .. tostring(targetID))
+        local id = tonumber(targetID)
+        if id then
+            print("Relaying CMD ["..command.."] to Turtle " .. targetID)
+            rednet.send(id, {
+                type = "DIRECT_COMMAND",
+                cmd = command
+            }, version_protocol)
+        else
+            print("Error: Invalid Target ID: " .. tostring(targetID))
+        end
     end
-
 end
 
 local function generateStripQueue(startX, startY, startZ, distance)
@@ -260,7 +268,7 @@ while true do
 
         -- targeted Commands
         if msg.target and msg.target ~= "HUB" then
-            relayTargetCommand(msg.target, cmd)
+            relayTargetCommand(msg.target, msg.cmd, msg.whitelist)
         -- local hub commands
         elseif cmd == "reboot" then
             os.reboot()
