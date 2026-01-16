@@ -281,7 +281,8 @@ while true do
             sleep(2)
             updatePairs()
 
-        elseif cmd == "update fleet" then
+        elseif msg.type == "INSTALLER_UPDATE" then
+            print("Starting Fleet Update Process...")
             coordinateFleetUpdate(msg.whitelist)
 
         elseif cmd == "recall" then
