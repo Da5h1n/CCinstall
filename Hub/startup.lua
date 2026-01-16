@@ -310,6 +310,7 @@ while true do
                 end
                 safeSend({type="turtle_response", id="HUB", content="Formation orders sent."})
             end
+
         elseif cmd == "start_mining" then
             local waypoints = getAbsoluteWaypoints()
             if waypoints then
