@@ -1,3 +1,12 @@
+--FORWARD DECLARATION
+local saveSettings, loadSettings, updateFacing
+local getRole, getInventory, getDirID
+local getStatusReport, broadcastStatus
+local syncMove, syncTurn, turnRight, turnLeft, smartStep
+local getGPSData, faceDirection, gotoCoords
+local mineTo, executeCoordMission
+
+-- VARIABLES
 local myID = os.getComputerID()
 local version_protocol = "fleet_status"
 local myState = "idle"
