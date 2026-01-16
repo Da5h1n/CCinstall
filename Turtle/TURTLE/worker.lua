@@ -343,11 +343,11 @@ while true do
                 if not fs.exists("installer") then
                     shell.run("pastebin", "get", "S3HkJqdw", "installer")
                 end
-                shell.run("installer", "update", msg.pkg or "TURTLE")
+                shell.run("installer", "update", msg.pkg)
                 rednet.send(id, {type = "update_complete", id = myID}, version_protocol)
                 sleep(2)
                 os.reboot()
-
+                
             elseif command == "IDENTIFY_TYPE" then
                 getGPSData()
                 broadcastStatus(true)
