@@ -309,64 +309,78 @@ while true do
         heartbeatTimer = os.startTimer(20)
     
     elseif event == "turtle_inventory" then
-        print("Inventory change detected. Updating Hub...")
         broadcastStatus(false)
 
     elseif event == "rednet_message" and protocol == version_protocol then
         hubID = id
-        if type(msg) == "table" and msg.type == "DIRECT_COMMAND" then
-            print("Executing: " .. msg.cmd)
-            myState = "BUSY"
-            broadcastStatus(false)
-            shell.run(msg.cmd)
-            myState = "idle"
-            broadcastStatus(false)
+        local command = ""
+        local msgType = ""
+        local whitelist = nil
 
-        elseif msg == "IDENTIFY_TYPE" then
-            getGPSData()
-            broadcastStatus(true)
-            
-        elseif msg == "SEND_VERSION" then
-            broadcastStatus(false)
+        if type(msg) == "table" then
+            command = msg.cmd or msg.command or ""
+            msgType = msg.type or ""
+            whitelist = msg.whitelist
+        else
+            command = tostring(msg)
+        end
 
-        elseif type(msg) == "table" and msg.type == "RECALL_POSITION" then
-            print("Received parking orders: ".. msg.x .. ", " .. msg.z)
+        local isAllowed = true
+        if whitelist then
+            isAllowed = false
+            for _, allowedID in ipairs(whitelist) do
+                if tonumber(allowedID) == myID then
+                    isAllowed = true
+                    break
+                end
+            end
+        end
 
-            gotoCoords(msg.x, msg.y, msg.z)
+        if isAllowed then
+            if msgType == "INSTALLER_UPDATE" then
+                print("Update signal received...")
+                rednet.send(id, {type = "turtle_response", id = myID, content = "Update starting..."}, version_protocol)
+                if not fs.exists("installer") then
+                    shell.run("pastebin", "get", "S3HkJqdw", "installer")
+                end
+                shell.run("installer", "update", msg.pkg or "TURTLE")
+                rednet.send(id, {type = "update_complete", id = myID}, version_protocol)
+                sleep(2)
+                os.reboot()
 
-            faceDirection("east")
+            elseif command == "IDENTIFY_TYPE" then
+                getGPSData()
+                broadcastStatus(true)
 
-            print("Parked and ready.")
-            myState = "parked"
-            broadcastStatus(false)
+            elseif command == "SEND_VERSION" then
+                broadcastStatus(false)
 
-        elseif type(msg) == "table" and msg.type == "START_MINING" then
-            executeMiningMission(msg)
-
-            rednet.send(hubID, "request_parking", version_protocol)
-
-        elseif type(msg) == "table" and msg.type == "MINER_STEP" then
-
-            if myRole == "chunky" then
-                print("Partner moved. Shadowing...")
-
+            elseif msgType == "RECALL_POSITION" then
+                print("Parking at: ".. msg.x .. ", " .. msg.z)
                 gotoCoords(msg.x, msg.y, msg.z)
-            end
-        
-        elseif type(msg) == "table" and msg.type == "COORD_MISSION" then
-            executeCoordMission(msg)
-            rednet.send(hubID, "request_parking", version_protocol)
+                faceDirection("east")
+                myState = "PARKED"
+                broadcastStatus(false)
 
-        elseif type(msg) == "table" and msg.type == "INSTALLER_UPDATE" then
-            print("Update signal received...")
-            rednet.send(id, {type = "turtle_response", id = myID, content = "Update starting..."}, version_protocol)
-            if not fs.exists("installer") then
-                shell.run("pastebin", "get", "S3HkJqdw", "installer")
+            elseif msgType == "COORD_MISSION" then
+                executeCoordMission(msg)
+                rednet.send(hubID, "request_parking", version_protocol)
+
+            elseif msgType == "MINER_STEP" and myRole == "chunky" then
+                print("Shadowing partner...")
+                gotoCoords(msg.x, msg.y, msg.z)
+
+            elseif msgType == "DIRECT_COMMAND" or command ~= "" then
+                local executeCmd = (msgType == "DIRECT_COMMAND") and command or command
+                print("Exec: " .. executeCmd)
+                myState = "BUSY"
+                broadcastStatus(false)
+
+                pcall(function() shell.run(executeCmd) end)
+
+                myState = "IDLE"
+                broadcastStatus(false)
             end
-            shell.run("installer", "update", msg.pkg)
-            rednet.send(id, {type = "update_complete", id = myID}, version_protocol)
-            sleep(2)
-            os.reboot()
         end
     end
 end
