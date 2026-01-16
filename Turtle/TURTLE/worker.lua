@@ -229,7 +229,7 @@ local function smartStep(direction)
     return true
 end
 
-local function getGPSData(forceMove)
+getGPSData = function(forceMove)
     local x, y, z = gps.locate(2)
     if not x then print("GPS lost!") return false end
 
