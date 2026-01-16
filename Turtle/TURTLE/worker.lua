@@ -340,14 +340,30 @@ while true do
             if msgType == "INSTALLER_UPDATE" then
                 print("Update signal received...")
                 rednet.send(id, {type = "turtle_response", id = myID, content = "Update starting..."}, version_protocol)
-                if not fs.exists("installer") then
-                    shell.run("pastebin", "get", "S3HkJqdw", "installer")
-                end
-                shell.run("installer", "update", msg.pkg)
-                rednet.send(id, {type = "update_complete", id = myID}, version_protocol)
-                sleep(2)
-                os.reboot()
                 
+                -- Ensure we use an absolute path to the root
+                local installerPath = "/installer"
+                
+                if not fs.exists(installerPath) then
+                    print("Downloading installer...")
+                    -- Force download to the root
+                    shell.run("pastebin", "get", "S3HkJqdw", installerPath)
+                end
+
+                -- Final check before execution
+                if fs.exists(installerPath) then
+                    print("Running: " .. installerPath)
+                    -- Use the absolute path to avoid "no such program"
+                    shell.run(installerPath, "update", msg.pkg or "TURTLE")
+                    
+                    rednet.send(id, {type = "update_complete", id = myID}, version_protocol)
+                    sleep(1)
+                    os.reboot()
+                else
+                    print("Error: Installer not found!")
+                    rednet.send(id, {type = "turtle_response", id = myID, content = "Update failed: No installer file"}, version_protocol)
+                end
+
             elseif command == "IDENTIFY_TYPE" then
                 getGPSData()
                 broadcastStatus(true)
