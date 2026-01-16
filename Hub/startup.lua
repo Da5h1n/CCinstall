@@ -361,7 +361,7 @@ while true do
             print("Turtle " .. senderID .. " requested parking.")
             sendParkingOrder(senderID)
 
-        elseif message.lowFuel and (message.state == "IDLE" or message.state == "PARKED") then
+        elseif message.lowFuel then
             local waypoints = getAbsoluteWaypoints()
             if waypoints then 
                 print("Turtle " .. senderID .. " is low on fuel! Sending to station.")
