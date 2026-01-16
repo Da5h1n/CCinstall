@@ -242,25 +242,22 @@ getGPSData = function(forceMove)
     
     if lastKnownPos.facing == "unknown" or forceMove then
         print("Calibrating facing...")
-        local moveSuccess = false
+        local success = false
         local movedUp = false
         local turns = 0
 
-        while not moveSuccess and turns < 4 do
-            if not turtle.detect() then
-                moveSuccess = turtle.forward()
-            elseif not turtle.detectUp() then
-                moveSuccess = turtle.up()
-                movedUp = true
+        for i = 1, 4 do
+            if not turtle.detect() and turtle.forward() then
+                success = true
+                break
             else
-                print("Blocked... turning...")
-                turnRight()
+                turtle.turnRight()
                 turns = turns + 1
             end
         end
 
-        if moveSuccess then
-            local x2, y2, z2 = gps.locate(2)
+        if success then
+            local x2, y2, z2 = gps.locate(3)
             if x2 then
                 local detFacing = "unknown"
                 if x2 > x then detFacing = "east"
@@ -269,84 +266,47 @@ getGPSData = function(forceMove)
                 elseif z2 < z then detFacing = "north"
                 end
 
-                local dirs = {"north", "east", "south", "west"}
-                local currentIdx = 1
-                for i, v in ipairs(dirs) do
-                    if v == detFacing then
-                        currentIdx = i
-                    end
-                end
+                updateFacing(detFacing)
 
-                local originalIdx = (currentIdx - turns - 1) % 4 + 1
-                updateFacing(dirs[originalIdx])
+                turtle.back()
             end
-
-            if movedUp then turtle.down() else turtle.back() end
         end
-
-        for i = 1, turns do turnLeft() end
     end
     return true
 end
 
 local function faceDirection(dir)
-    if lastKnownPos.facing == "unknown" then getGPSData() end
-    if lastKnownPos.facing == dir then return end
-
     local dirs = {north=1, east=2, south=3, west=4}
-    local start = dirs[lastKnownPos.facing]
-    local target = dirs[dir]
-
-    local diff = (target - start + 4) % 4
-
-    if diff == 3 then
-        turnLeft()
-    else
-        for i = 1, diff do
-            turnRight()
-        end
+    while lastKnownPos.facing ~= dir do
+        turnRight()
     end
 end
 
 local function gotoCoords(tx, ty, tz)
     myState = "traveling"
-    targetPos = {x = tx, y = ty, z = tz}
-    broadcastStatus(false)
 
-    -- flight level
-    while lastKnownPos.y < ty + 2 do
-        if not smartStep(function() return syncMove(turtle.up, "up") end) then
-            break
+    local dist = math.abs(lastKnownPos.x - tx) + math.abs(lastKnownPos.z - tz)
+
+    if dist > 2 then
+        while lastKnownPos.y < ty + 2 do
+            if not smartStep(function() return syncMove(turtle.up, "up") end) then break end
         end
     end
 
-    -- X alignment
-    while lastKnownPos.x ~= tx do
-        faceDirection(lastKnownPos.x < tx and "east" or "west")
-        if not smartStep(function() return syncMove(turtle.forward, "forward") end) then
-            break
+    local function align(axis, target, pos1, neg1)
+        while lastKnownPos[axis] ~= target do
+            faceDirection(lastKnownPos[axis] < target and pos1 or neg1)
+            if not smartStep(function() return syncMove(turtle.forward, "forward") end) then break end
         end
     end
 
-    -- Z alignment
-    while lastKnownPos.z ~= tz do
-        faceDirection(lastKnownPos.z < tz and "south" or "north")
-        if not smartStep(function() return syncMove(turtle.forward, "forward") end) then
-            break
-        end
-    end
+    align("x", tx, "east", "west")
+    align("z", tz, "south", "north")
 
-    -- Y desent
     while lastKnownPos.y > ty do
-        if not smartStep(function() return syncMove(turtle.down, "down") end) then
-            break
-        end
+        if not smartStep(function() return syncMove(turtle.down, "down") end) then break end
     end
-
-    myState = "parked"
-    targetPos = nil
-    broadcastStatus(false)
-    
+    myState = "idle"
 end
 
 local function mineTo(tx, ty, tz)
@@ -408,11 +368,13 @@ local function executeCoordMission(msg)
 end
 
 -- --- MAIN BOOT ---
-local heartbeatTimer = os.startTimer(20)
+
 print("Initializing system...")
-getGPSData(true)
+pcall(function() getGPSData(true) end)
 broadcastStatus(true)
 print("Booted: " .. myName)
+
+local heartbeatTimer = os.startTimer(15)
 
 while true do
     local event, id, msg, protocol = os.pullEvent()
