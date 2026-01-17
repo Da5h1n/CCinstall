@@ -273,8 +273,8 @@ while true do
         if success and type(msg) == "table" then
 
             if msg.protocol == "fleet_ack" then
-                if msg.target then
-                    rednet.send(msg.target, "ACK", "fleet_ack")
+                if msg.target and msg.target ~= "HUB" then
+                    rednet.send(tonumber(msg.target), "ACK", "fleet_ack")
                 end
                 
             elseif msg.type == "INSTALLER_UPDATE" then
