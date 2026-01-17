@@ -211,6 +211,7 @@ function syncTurn(isRight)
     end
 
     updateFacing(dirs[currentIdx])
+    broadcastStatus(false)
 end
 
 local function turnRight() syncTurn(true) end
@@ -243,33 +244,43 @@ getGPSData = function(forceMove)
     if lastKnownPos.facing == "unknown" or forceMove then
         print("Calibrating facing...")
         local success = false
-        local movedUp = false
-        local turns = 0
 
         for i = 1, 4 do
             if not turtle.detect() and turtle.forward() then
-                success = true
-                break
-            else
-                turtle.turnRight()
-                turns = turns + 1
-            end
-        end
+                local x2, y2, z2 = gps.locate(3)
+                if x2 then
+                    local detFacing = "unknown"
+                    if x2 > x then detFacing = "east"
+                    elseif x2 < x then detFacing = "west"
+                    elseif z2 > z then detFacing = "south"
+                    elseif z2 < z then detFacing = "north"
+                    end
 
-        if success then
-            local x2, y2, z2 = gps.locate(3)
-            if x2 then
-                local detFacing = "unknown"
-                if x2 > x then detFacing = "east"
-                elseif x2 < x then detFacing = "west"
-                elseif z2 > z then detFacing = "south"
-                elseif z2 < z then detFacing = "north"
+                    updateFacing(detFacing)
+                    success = true
+
+                    turnRight()
+                    turnRight()
+
+                    while not turtle.forward() do
+                        turtle.dig()
+                        sleep(0.5)
+                    end
+
+                    turnRight()
+                    turnRight()
+                    
+                    print("Calibrated: " .. lastKnownPos.facing)
+                    break
                 end
-
-                updateFacing(detFacing)
-
                 turtle.back()
             end
+            turnRight()
+        end
+
+        if not success then
+            print("Calibration Failed: Unit is completely boxed in.")
+            return false
         end
     end
     return true
@@ -297,6 +308,7 @@ local function gotoCoords(tx, ty, tz)
         while lastKnownPos[axis] ~= target do
             faceDirection(lastKnownPos[axis] < target and pos1 or neg1)
             if not smartStep(function() return syncMove(turtle.forward, "forward") end) then break end
+            broadcastStatus(false)
         end
     end
 
