@@ -9,7 +9,7 @@ local mineTo, executeCoordMission
 -- VARIABLES
 local myID = os.getComputerID()
 local version_protocol = "fleet_status"
-local myState = "idle"
+local myState = "IDLE"
 local hubID = nil
 local SETTINGS_FILE = "/.unit_data.json"
 
@@ -306,7 +306,7 @@ local function gotoCoords(tx, ty, tz)
     while lastKnownPos.y > ty do
         if not smartStep(function() return syncMove(turtle.down, "down") end) then break end
     end
-    myState = "idle"
+    myState = "IDLE"
 end
 
 local function mineTo(tx, ty, tz)
@@ -364,7 +364,7 @@ local function executeCoordMission(msg)
         turtle.drop()
     end
     turtle.select(1)
-    myState = "idle"
+    myState = "IDLE"
 end
 
 local function autoRefuel(waypoints)
@@ -453,23 +453,20 @@ while true do
         if isAllowed then
             if command == "INSTALLER_UPDATE" then
                 print("Update signal received...")
-                rednet.send(id, {type = "turtle_response", id = myID, content = "Updating..."}, version_protocol)
+                rednet.send(id, {type = "turtle_response", id = myID, content = "Starting Update..."}, version_protocol)
                 
                 local path = "/installer"
-                -- 1. Ensure fresh download
                 if fs.exists(path) then fs.delete(path) end
                 
                 print("Downloading installer...")
-                shell.run("pastebin", "get", "S3HkJqdw", path)
+                local dlSuccess = shell.run("pastebin", "get", "S3HkJqdw", path)
 
-                if fs.exists(path) then
+                if dlSuccess and fs.exists(path) then
                     print("Executing update...")
-                    -- 2. Use dofile to execute the script directly from the path
-                    -- This bypasses the "No such program" shell error
+                    local pkg = msg.pkg or "TURTLE"
+
                     local success, err = pcall(function()
-                        -- This effectively runs: installer update [PKG]
-                        local pkg = msg.pkg or "TURTLE"
-                        shell.run(path, "update", pkg)
+                        return shell.run(path, "update", pkg)
                     end)
 
                     if success then
@@ -477,12 +474,12 @@ while true do
                         sleep(1)
                         os.reboot()
                     else
-                        print("Exec Error: " .. tostring(err))
-                        rednet.send(id, {type = "turtle_response", id = myID, content = "Exec fail: "..tostring(err)}, version_protocol)
+                        rednet.send(id, {type = "turtle_response", id = myID, content = "Update fail: "..tostring(err)}, version_protocol)
+                        print("Update failed: " .. tostring(err))
                     end
                 else
+                    rednet.send(id, {type = "turtle_response", id = myID, content = "Download failed (Pastebin)", version_protocol})
                     print("Download failed.")
-                    rednet.send(id, {type = "turtle_response", id = myID, content = "Download failed"}, version_protocol)
                 end
 
             elseif command == "IDENTIFY_TYPE" then
@@ -493,7 +490,7 @@ while true do
                 broadcastStatus(false)
 
             elseif msgType == "REFUEL_ORDER" then
-                print("Hub ordered refueling")
+                print("Hub ordered refueling. Clearing station.")
                 autoRefuel(msg.waypoints)
                 rednet.send(hubID, "request_parking", version_protocol)
 
@@ -504,6 +501,7 @@ while true do
                 faceDirection("east")
                 myState = "PARKED"
                 broadcastStatus(false)
+                print("Unit Parked. Queue station clear.")
 
             elseif msgType == "COORD_MISSION" then
                 executeCoordMission(msg)
