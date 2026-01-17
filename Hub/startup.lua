@@ -268,7 +268,7 @@ while true do
     -- handle dashboard Comamnds
     if event == "websocket_message" then
         local raw = p2
-        local success, msg = pcall(textutils.unserialiseJSON, raw)
+        local success, msg = pcall(textutils.unserializeJSON, raw)
 
         if not success or type(msg) ~= "table" then
             msg = { command = tostring(raw) }
