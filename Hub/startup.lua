@@ -3,9 +3,12 @@ local version_protocol = "fleet_status"
 peripheral.find("modem", rednet.open)
 
 local ws = nil
-local fleet_cache = {} 
+local fleet_cache = {}
 local fleet_roles = {}
 local fleet_pairs = {}
+
+local refuel_queue = {}
+local current_refueler = nil
 
 local OFFSETS = {
     mine_down  = {x = 3, y = 0, z = -5},
@@ -123,45 +126,52 @@ local function updatePairs()
 end
 
 local function coordinateFleetUpdate(whitelist)
-    local pending = {}
-    local count = 0
+    if not whitelist or #whitelist == 0 then return end
+    print("Starting Staggered Update for " .. #whitelist .. " units...")
 
-    if whitelist and #whitelist > 0 then
-        for _, id in ipairs(whitelist) do
-            pending[id] = true
-            count = count + 1
-        end
-    end
+    for _, id in ipairs(whitelist) do
+        print("Updating Turtle " .. id)
+        rednet.send(id, {type="INSTALLER_UPDATE", pkg="TURTLE"}, version_protocol)
 
-    if count == 0 then
-        print("No turtles in cache. Try refreshing first.")
-        return
-    end
-
-    print("Updating Fleet. Waiting for " .. count .. " units...")
-    rednet.broadcast({type="INSTALLER_UPDATE", pkg="TURTLE"}, version_protocol)
-    
-    local timeout = os.startTimer(60)
-    while count > 0 do
-        local event, id, msg, protocol = os.pullEvent()
-        if event == "rednet_message" and protocol == version_protocol then
-            if type(msg) == "table" and msg.type == "update_complete" then
-                if pending[id] then
-                    pending[id] = nil
-                    count = count - 1
-                    print("Turtle " .. id .. " Updated OK. (" .. count .. " left)")
-                    safeSend({type="turtle_response", id=id, content="Update success."})
+        local timeout = os.startTimer(60)
+        while true do
+            local event, rid, msg, protocol = os.pullEvent()
+            if event == "rednet_message" and rid == id and protocol == version_protocol then
+                if type(msg) == "table" then
+                    if msg.type == "update_complete" then
+                        print("Turtle " .. id .. " Update Success.")
+                        safeSend({type="turtle_response", id=id, content="Update success."})
+                        break
+                    elseif msg.type == "turtle_response" and msg.content:find("fail") then
+                        print("Turtle " .. id .. ": ERROR - " .. msg.content)
+                        break
+                    end
                 end
+            elseif event == "timer" and rid == timeout then
+                print("Warning: Turtle " .. id .. ": TIMEOUT. Skipping...")
+                break
             end
-        elseif event == "timer" and id == timeout then
-            print("Update timeout reached. Some units may have failed.")
-            break
         end
+        sleep(2)
     end
 
-    print("Updating Hub...")
+    print("All fleet updates processed. Updating Hub...")
     shell.run("installer", "update", "HUB")
     os.reboot()
+end
+
+local function processRefuelQueue()
+    if current_refueler == nil and #refuel_queue > 0 then
+        local nextID = table.remove(refuel_queue, 1)
+        local waypoints = getAbsoluteWaypoints()
+
+        if waypoints then
+            current_refueler = nextID
+            print("Refuel Station Clear. Sending Turtle " .. nextID)
+            rednet.send(nextID, { type = "REFUEL_ORDER", waypoints = waypoints }, version_protocol)
+            safeSend({type="turtle_response", id=nextID, content="Proceeding to refuel station."})
+        end
+    end
 end
 
 local function sendParkingOrder(id)
@@ -246,7 +256,8 @@ local function generateStripQueue(startX, startY, startZ, distance)
     return queue
 end
 
--- Initial startup
+-- --- MAIN BOOT ---
+
 connect()
 
 local hubHeartbeat = os.startTimer(15)
@@ -354,20 +365,22 @@ while true do
 
                 if message.lowFuel then
                     local state = tostring(message.state or ""):lower()
-                    if state == "idle" or state == "parked" then
-                        local waypoints = getAbsoluteWaypoints()
-                        if waypoints then
-                            print("Turtle " .. senderID .. " is low on fuel! Sending to station.")
-                            rednet.send(senderID, { type = "REFUEL_ORDER", waypoints = waypoints }, version_protocol)
+                    local alreadyInQueue = false
+                    for _, qID in ipairs(refuel_queue) do if qID == senderID then alreadyInQueue = true end end
 
-                            safeSend({
-                                type = "turtle_response",
-                                id = senderID,
-                                content = "Auto-refuel triggered by Hub."
-                            })
+                    if not alreadyInQueue and current_refueler ~= senderID then
+                        if state == "idle" or state == "parked" then
+                            table.insert(refuel_queue, senderID)
+                            print("Turtle " .. senderID .. " added to refuel queue. Position: " .. #refuel_queue)
                         end
                     end
                 end
+
+                if senderID == current_refueler and tostring(message.state or ""):lower() == "parked" then
+                    current_refueler = nil
+                    print("Turtle " .. senderID .. " has finished refueling and parked.")
+                end
+                processRefuelQueue()
 
             elseif message == "request_parking" then
                 print("Turtle " .. senderID .. " requested parking.")
@@ -376,14 +389,7 @@ while true do
         end
         -- Heartbeat timer
     elseif event == "timer" and p1 == hubHeartbeat then
-        safeSend({
-            type = "version_report",
-            id = "HUB",
-            name = "Central Command Hub",
-            role = "hub",
-            v = getHubVersion(),
-            online = true
-        })
+        safeSend({type = "version_report", id = "HUB", name = "Central Command Hub", role = "hub", v = getHubVersion(), online = true})
         hubHeartbeat = os.startTimer(15)
 
     -- RECONECT LOGIC
