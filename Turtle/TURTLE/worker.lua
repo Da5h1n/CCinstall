@@ -337,6 +337,7 @@ local function mineTo(tx, ty, tz)
             if not syncMove(turtle.forward, "forward") then break end
         end
     end
+    broadcastStatus(false)
 end
 
 local function executeCoordMission(msg)
@@ -413,14 +414,14 @@ pcall(function() getGPSData(true) end)
 broadcastStatus(true)
 print("Booted: " .. myName)
 
-local heartbeatTimer = os.startTimer(15)
+local heartbeatTimer = os.startTimer(5)
 
 while true do
     local event, id, msg, protocol = os.pullEvent()
 
     if event == "timer" and id == heartbeatTimer then
         broadcastStatus(false)
-        heartbeatTimer = os.startTimer(20)
+        heartbeatTimer = os.startTimer(5)
     
     elseif event == "turtle_inventory" then
         broadcastStatus(false)
