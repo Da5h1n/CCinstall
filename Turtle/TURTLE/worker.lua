@@ -32,7 +32,7 @@ local function loadSettings()
     local content = f.readAll()
     f.close()
 
-    local data = textutils.unserialiseJSON(content)
+    local data = textutils.unserializeJSON(content)
     return data or defaultValues
 end
 
@@ -132,7 +132,7 @@ local function getStatusReport(checkGPS)
     local version = "0"
     if fs.exists("/.installer/versions.json") then
         local f = fs.open("/.installer/versions.json", "r")
-        local data = textutils.unserialiseJSON(f.readAll())
+        local data = textutils.unserializeJSON(f.readAll())
         f.close()
         version = (data and data["TURTLE"]) and data["TURTLE"].version or "?"
     end
@@ -154,7 +154,25 @@ local function getStatusReport(checkGPS)
 end
 
 local function broadcastStatus(fullScan)
-    rednet.broadcast(getStatusReport(fullScan), version_protocol)
+    local report = getStatusReport(fullScan)
+    local success = false
+    local retries = 0
+
+    while not success and retries < 3 do
+        if hubID then
+            rednet.send(hubID, report, version_protocol)
+        else
+            rednet.broadcast(report, version_protocol)
+        end
+
+        local id, msg = rednet.receive("fleet_ack", 0.5)
+        if id then
+            success = true
+        else
+            retries = retries + 1
+            sleep(0.1)
+        end
+    end
 end
 
 function syncMove(moveFunc, direction)
