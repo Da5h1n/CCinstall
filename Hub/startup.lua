@@ -74,6 +74,8 @@ local function connect()
             print("Connected!")
             ws = socket
 
+            local hPos = getHubPos()
+
                 -- 1. Identify HUB to Dashboard
             safeSend({
                 type = "version_report", 
@@ -82,7 +84,8 @@ local function connect()
                 role = "hub", 
                 v = getHubVersion(), 
                 fuel = 0, 
-                maxFuel = 0
+                maxFuel = 0,
+                pos = hPos
             })
 
             print("Requesting fleet status...")
@@ -395,7 +398,8 @@ while true do
         end
         -- Heartbeat timer
     elseif event == "timer" and p1 == hubHeartbeat then
-        safeSend({type = "version_report", id = "HUB", name = "Central Command Hub", role = "hub", v = getHubVersion(), online = true})
+        local hPos = getHubPos()
+        safeSend({type = "version_report", id = "HUB", name = "Central Command Hub", role = "hub", v = getHubVersion(), pos = hPos, online = true})
         hubHeartbeat = os.startTimer(15)
 
     -- RECONECT LOGIC
