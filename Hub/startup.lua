@@ -322,13 +322,24 @@ while true do
                             end
                         end
 
-                        local response = {
-                            type = "world_update",
-                            id = os.getComputerID(),
-                            blocks = blocks_to_send
-                        }
+                        local chunkSize = 100
+                        for i = 1, #blocks_to_send, chunkSize do
+                            local chunk = {}
+                            for j = i, math.min(i + chunkSize - 1, #blocks_to_send) do
+                                table.insert(chunk, blocks_to_send[j])
+                            end
 
-                        ws.send(textutils.serializeJSON(response))
+                            local response = {
+                                type = "world_update",
+                                id = os.getComputerID(),
+                                blocks = chunk,
+                                part = math.floor(i/chunkSize) + 1,
+                                total_parts = math.ceil(#blocks_to_send / chunkSize)
+                            }
+
+                            ws.send(textutils.serializeJSON(response))
+                            sleep(0.05)
+                        end
                         print("Scan complete: Sent " .. #blocks_to_send .. " blocks.")
                     end
                 else
