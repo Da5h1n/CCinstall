@@ -175,6 +175,44 @@ local function broadcastStatus(fullScan)
     end
 end
 
+function reportWorld(relDir)
+    local success, data = nil, nil
+    if relDir == "forward" then success, data = turtle.inspect()
+    elseif relDir == "up" then success, data = turtle.inspectUp()
+    elseif relDir == "down" then success, data = turtle.inspectDown()
+    end
+
+    if success then
+        local bx, by, bz = lastKnownPos.x, lastKnownPos.y, lastKnownPos.z
+        local f = lastKnownPos.facing
+
+        if relDir == "up" then by = by + 1
+        elseif relDir == "down" then by = by - 1
+        elseif relDir == "forward" then
+            if f == "north" then bz = bz - 1
+            elseif f == "south" then bz = bz + 1
+            elseif f == "east"  then bx = bx + 1
+            elseif f == "west"  then bx = bx - 1
+            end
+        end
+
+        rednet.send(hubID, {
+            type = "world_update",
+            blocks = {{x = bx, y = by, z = bz, name = data.name}}
+        }, version_protocol)
+    end
+end
+
+function activeScan()
+    reportWorld("up")
+    reportWorld("down")
+
+    for i = 1, 4 do
+        reportWorld("forward")
+        turnRight()
+    end
+end
+
 function syncMove(moveFunc, direction)
 
     if turtle.getFuelLevel() == 0 then
@@ -206,6 +244,11 @@ function syncMove(moveFunc, direction)
             elseif f == "west"  then lastKnownPos.x = lastKnownPos.x + 1
             end
         end
+
+        reportWorld("forward")
+        reportWorld("up")
+        reportWorld("down")
+
         broadcastStatus(false)
         return true
     end
