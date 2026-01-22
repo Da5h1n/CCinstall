@@ -305,14 +305,20 @@ while true do
 
                         for _, block in pairs(scandata) do
                             if block.name ~= "minecraft:air" then
-                                local bData = {
+                                local cleanTags = {}
+                                if block.tags then
+                                    for tag, value in pairs(block.tags) do
+                                        cleanTags[tag] = value
+                                    end
+                                end
+
+                                table.insert(blocks_to_send, {
                                     x = hubX + block.x,
                                     y = hubY + block.y,
                                     z = hubZ + block.z,
                                     name = block.name,
-                                    tags = block.tags or {}
-                                }
-                                table.insert(blocks_to_send, bData)
+                                    tags = cleanTags
+                                })
                             end
                         end
 
@@ -323,6 +329,7 @@ while true do
                         }
 
                         ws.send(textutils.serializeJSON(response))
+                        print("Scan complete: Sent " .. #blocks_to_send .. " blocks.")
                     end
                 else
                     print("No Geoscanner found on Right side.")
