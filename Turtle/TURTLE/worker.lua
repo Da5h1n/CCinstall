@@ -196,8 +196,9 @@ function reportWorld(relDir)
             end
         end
 
-        rednet.send(hubID, {
+        rednet.broadcast({
             type = "world_update",
+            id = myID,
             blocks = {{x = bx, y = by, z = bz, name = data.name}}
         }, version_protocol)
     end
