@@ -288,6 +288,45 @@ while true do
                 local cmd = tostring(msg.command or msg.type or "")
                 relayTargetCommand(msg.target, cmd, msg.whitelist)
 
+            elseif msg.type == "scan_nearby" then
+                local geo = peripheral.find("geoScanner")
+                if geo then
+                    local radius = 8
+                    local blocks = {}
+                    local scandata = geo.scan(radius)
+
+                    if scandata then 
+                        local blocks_to_send = {}
+
+                        local hubX, hubY, hubZ = gps.locate()
+                        hubX = hubX or 0
+                        hubY = hubY or 0
+                        hubZ = hubZ or 0
+
+                        for _, block in pairs(scandata) do
+                            if block.name ~= "minecraft:air" then
+                                table.insert(blocks_to_send, {
+                                    x = hubX + block.x,
+                                    y = hubY + block.y,
+                                    z = hubZ + block.z,
+                                    name = block.name
+                                })
+                            end
+                        end
+
+                        local response = {
+                            type = "world_update",
+                            id = os.getComputerID(),
+                            blocks = blocks_to_send
+                        }
+
+                        ws.send(textutils.serializeJSON(response))
+                    end
+                else
+                    local err = {type="turtle_response", id=os.getComputerID(), content="Error: No Geo Scanner found"}
+                    ws.send(textutils.serializeJSON(err))
+                end
+
             else
                 local cmd = tostring(msg.command or msg.type or "")
                 print("Hub Command Recieved: " .. cmd)
