@@ -531,11 +531,12 @@ while true do
                 rednet.send(id, {type = "turtle_response", id = myID, content = "Starting Update..."}, version_protocol)
                 
                 local path = "/installer"
-                if fs.exists(path) then fs.delete(path) end
+                if not fs.exists(path) then
                 
-                print("Downloading installer...")
-                local dlSuccess = shell.run("pastebin", "get", "S3HkJqdw", path)
-
+                    print("Downloading installer...")
+                    local dlSuccess = shell.run("pastebin", "get", "S3HkJqdw", path)
+                end
+                
                 if dlSuccess and fs.exists(path) then
                     print("Executing update...")
                     local pkg = msg.pkg or "TURTLE"
