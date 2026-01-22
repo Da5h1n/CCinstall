@@ -289,7 +289,7 @@ while true do
                 relayTargetCommand(msg.target, cmd, msg.whitelist)
 
             elseif msg.type == "scan_nearby" then
-                local geo = peripheral.find("geoScanner")
+                local geo = peripheral.wrap("right")
                 if geo then
                     local radius = 8
                     local blocks = {}
@@ -305,12 +305,14 @@ while true do
 
                         for _, block in pairs(scandata) do
                             if block.name ~= "minecraft:air" then
-                                table.insert(blocks_to_send, {
+                                local bData = {
                                     x = hubX + block.x,
                                     y = hubY + block.y,
                                     z = hubZ + block.z,
-                                    name = block.name
-                                })
+                                    name = block.name,
+                                    tags = block.tags or {}
+                                }
+                                table.insert(blocks_to_send, bData)
                             end
                         end
 
@@ -323,6 +325,7 @@ while true do
                         ws.send(textutils.serializeJSON(response))
                     end
                 else
+                    print("No Geoscanner found on Right side.")
                     local err = {type="turtle_response", id=os.getComputerID(), content="Error: No Geo Scanner found"}
                     ws.send(textutils.serializeJSON(err))
                 end
