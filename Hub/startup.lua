@@ -1,4 +1,4 @@
-local ws_url = "ws://skinnerm.duckdns.org:25565"
+local ws_url = "ws://192.168.0.62:25565"
 local version_protocol = "fleet_status" 
 peripheral.find("modem", rednet.open)
 
@@ -362,6 +362,7 @@ while true do
     elseif event == "rednet_message" then
         local senderID, message, protocol = p1, p2, p3
         if protocol == version_protocol then
+            safeSend(message)
             if type(message) == "table" then
                     
                 local isNew = fleet_cache[senderID] == nil
