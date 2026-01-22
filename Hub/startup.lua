@@ -134,7 +134,7 @@ local function coordinateFleetUpdate(whitelist)
 
     for _, id in ipairs(whitelist) do
         print("Updating Turtle " .. id)
-        rednet.send(id, {type="INSTALLER_UPDATE", pkg="TURTLE"}, version_protocol)
+        rednet.send(id, {type="INSTALLER_UPDATE", command="INSTALLER_UPDATE", pkg="TURTLE"}, version_protocol)
 
         local timeout = os.startTimer(60)
         while true do
