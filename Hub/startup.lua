@@ -290,11 +290,21 @@ while true do
                 relayTargetCommand(msg.target, cmd, msg.whitelist)
 
             elseif msg.type == "scan_nearby" then
-                local side = "right"
+                local side = "right" -- Ensure this matches your physical setup
                 local geo = peripheral.wrap(side)
                 local hubX, hubY, hubZ = gps.locate()
                 if not hubX then return end
                 
+                -- Calculate offset based on scanner position
+                local offX, offY, offZ = 0, 0, 0
+                if side == "right" then offX = 1
+                elseif side == "left" then offX = -1
+                elseif side == "top" then offY = 1
+                elseif side == "bottom" then offY = -1
+                elseif side == "front" then offZ = -1
+                elseif side == "back" then offZ = 1
+                end
+
                 if geo then
                     local radius = 8
                     local scandata = geo.scan(radius)
@@ -302,14 +312,13 @@ while true do
                     local current_scan_keys = {}
 
                     for _, b in pairs(scandata) do
-                        local absX, absY, absZ = hubX + b.x, hubY + b.y, hubZ + b.z
+                        -- APPLY OFFSET HERE
+                        local absX, absY, absZ = hubX + offX + b.x, hubY + offY + b.y, hubZ + offZ + b.z
                         local key = absX .. "," .. absY .. "," .. absZ
                         current_scan_keys[key] = true
 
-                        -- Only send if the block has changed to save bandwidth
                         if world_cache[key] ~= b.name then
-                            -- CRITICAL FIX: Create a NEW flat table here. 
-                            -- Do not pass b.tags directly if it might contain repeated table structures.
+                            -- Keep table flat to avoid serialization errors
                             table.insert(blocks_to_send, {
                                 x = absX, 
                                 y = absY, 
@@ -326,16 +335,19 @@ while true do
                             local kx, ky, kz = key:match("([^,]+),([^,]+),([^,]+)")
                             kx, ky, kz = tonumber(kx), tonumber(ky), tonumber(kz)
                             
-                            -- Only clear blocks within the scan radius
-                            if math.abs(kx - hubX) <= radius and math.abs(ky - hubY) <= radius and math.abs(kz - hubZ) <= radius then
+                            -- Check if the block is within the current scan volume (including offset)
+                            if math.abs(kx - (hubX + offX)) <= radius and 
+                               math.abs(ky - (hubY + offY)) <= radius and 
+                               math.abs(kz - (hubZ + offZ)) <= radius then
+                                
                                 table.insert(blocks_to_send, {x = kx, y = ky, z = kz, name = "minecraft:air"})
                                 world_cache[key] = "minecraft:air"
                             end
                         end
                     end
 
-                    -- Send in chunks to prevent websocket overflow
-                    local chunkSize = 100 -- Reduced size for safety
+                    -- Send in chunks
+                    local chunkSize = 100 
                     for i = 1, #blocks_to_send, chunkSize do
                         local chunk = {}
                         for j = i, math.min(i + chunkSize - 1, #blocks_to_send) do
@@ -347,11 +359,11 @@ while true do
                             id = os.getComputerID(),
                             blocks = chunk
                         })
-                        sleep(0.1) -- Small delay to allow Dashboard to process
+                        sleep(0.05) 
                     end
                     print("Scan complete: Sent " .. #blocks_to_send .. " blocks")
                 else
-                    print("No Geoscanner found.")
+                    print("No Geoscanner found on " .. side)
                 end
 
             else
