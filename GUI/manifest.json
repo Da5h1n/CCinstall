@@ -2,6 +2,17 @@
   "name": "GUI",
   "version": "0.0.1",
   "description": "A simple GUI framework",
-  "entry": "main.lua",
-  "installDir": ""
+  "installDir": "",
+  "files": [
+    "startup.lua",
+    "test.lua",
+    "lib/gui/frame.lua",
+    "lib/gui/init.lua",
+    "lib/gui/elements/TabControl.lua",
+    "lib/gui/elements/button.lua",
+    "lib/gui/elements/dropdown.lua",
+    "lib/gui/elements/element.lua",
+    "lib/gui/elements/keyinput.lua",
+    "label.lua"
+  ]
 }
