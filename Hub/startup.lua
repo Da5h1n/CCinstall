@@ -326,7 +326,9 @@ while true do
                             x = absX,
                             y = absY,
                             z = absZ,
-                            name = tostring(b.name)
+                            name = tostring(b.name),
+                            state = b.state or {},
+                            tags = b.state or {}
                         })
                         world_cache[key] = b.name
                     end
