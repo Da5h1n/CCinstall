@@ -289,7 +289,8 @@ while true do
                 relayTargetCommand(msg.target, cmd, msg.whitelist)
 
             elseif msg.type == "scan_nearby" then
-                local geo = peripheral.wrap("right")
+                local side = "right"
+                local geo = peripheral.wrap(side)
                 if geo then
                     local radius = 8
                     local blocks = {}
@@ -303,6 +304,16 @@ while true do
                         hubY = hubY or 0
                         hubZ = hubZ or 0
 
+                        -- offset logic
+                        local offX, offY, offZ = 0, 0, 0
+                        if side == "right" then offX = 1
+                        elseif side == "left" then offX = -1
+                        elseif side == "top" then offY = 1
+                        elseif side == "bottom" then offY = -1
+                        elseif side == "front" then offZ = -1
+                        elseif side == "back" then offZ = 1
+                        end
+
                         for _, block in pairs(scandata) do
                             if block.name ~= "minecraft:air" then
                                 local cleanTags = {}
@@ -313,16 +324,16 @@ while true do
                                 end
 
                                 table.insert(blocks_to_send, {
-                                    x = hubX + block.x,
-                                    y = hubY + block.y,
-                                    z = hubZ + block.z,
+                                    x = hubX + offX + block.x,
+                                    y = hubY + offY + block.y,
+                                    z = hubZ + offZ + block.z,
                                     name = block.name,
                                     tags = cleanTags
                                 })
                             end
                         end
 
-                        local chunkSize = 100
+                        local chunkSize = 250
                         for i = 1, #blocks_to_send, chunkSize do
                             local chunk = {}
                             for j = i, math.min(i + chunkSize - 1, #blocks_to_send) do
