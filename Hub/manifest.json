@@ -1,6 +1,6 @@
 {
   "name": "HUB",
-  "version": "0.0.1.6.3",
+  "version": "0.0.1.6.4",
   "description": "A script that controls multiple computers from a websocket.",
   "installDir": "",
   "files": [
