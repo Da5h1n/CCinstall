@@ -315,25 +315,24 @@ while true do
                         end
 
                         for _, block in pairs(scandata) do
-                            if block.name ~= "minecraft:air" then
-                                local cleanTags = {}
-                                if block.tags then
-                                    for tag, value in pairs(block.tags) do
-                                        cleanTags[tag] = value
-                                    end
+                            
+                            local cleanTags = {}
+                            if block.tags then
+                                for tag, value in pairs(block.tags) do
+                                    cleanTags[tag] = value
                                 end
-
-                                table.insert(blocks_to_send, {
-                                    x = hubX + offX + block.x,
-                                    y = hubY + offY + block.y,
-                                    z = hubZ + offZ + block.z,
-                                    name = block.name,
-                                    tags = cleanTags
-                                })
                             end
+
+                            table.insert(blocks_to_send, {
+                                x = hubX + offX + block.x,
+                                y = hubY + offY + block.y,
+                                z = hubZ + offZ + block.z,
+                                name = block.name,
+                                tags = cleanTags
+                            })
                         end
 
-                        local chunkSize = 250
+                        local chunkSize = 145
                         for i = 1, #blocks_to_send, chunkSize do
                             local chunk = {}
                             for j = i, math.min(i + chunkSize - 1, #blocks_to_send) do
