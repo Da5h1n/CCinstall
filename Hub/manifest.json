@@ -2,6 +2,8 @@
   "name": "HUB",
   "version": "0.0.1.5.9",
   "description": "A script that controls multiple computers from a websocket.",
-  "entry": "startup.lua",
-  "installDir": ""
+  "installDir": "",
+  "files": [
+    "startup.lua"
+  ]
 }
