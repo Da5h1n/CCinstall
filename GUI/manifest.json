@@ -13,6 +13,6 @@
     "lib/gui/elements/dropdown.lua",
     "lib/gui/elements/element.lua",
     "lib/gui/elements/keyinput.lua",
-    "label.lua"
+    "lib/gui/elements/label.lua"
   ]
 }
