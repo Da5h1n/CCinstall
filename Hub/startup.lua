@@ -310,6 +310,7 @@ while true do
                     local scandata = geo.scan(radius)
                     local blocks_to_send = {}
                     local current_scan_keys = {}
+                    local last_scan_keys = {}
 
                     for _, b in pairs(scandata) do
                         -- APPLY OFFSET HERE
@@ -329,22 +330,27 @@ while true do
                         end
                     end
 
-                    -- Cleanup: Detect blocks that are now AIR
-                    for key, old_name in pairs(world_cache) do
-                        if not current_scan_keys[key] and old_name ~= "minecraft:air" then
-                            local kx, ky, kz = key:match("([^,]+),([^,]+),([^,]+)")
-                            kx, ky, kz = tonumber(kx), tonumber(ky), tonumber(kz)
-                            
-                            -- Check if the block is within the current scan volume (including offset)
-                            if math.abs(kx - (hubX + offX)) <= radius and 
-                               math.abs(ky - (hubY + offY)) <= radius and 
-                               math.abs(kz - (hubZ + offZ)) <= radius then
-                                
-                                table.insert(blocks_to_send, {x = kx, y = ky, z = kz, name = "minecraft:air"})
+                    -- Cleanup: blocks that WERE visible last scan but no longer are
+                    for key, _ in pairs(last_scan_keys) do
+                        if not current_scan_keys[key] then
+                            local old_name = world_cache[key]
+                            if old_name and old_name ~= "minecraft:air" then
+                                local kx, ky, kz = key:match("([^,]+),([^,]+),([^,]+)")
+                                kx, ky, kz = tonumber(kx), tonumber(ky), tonumber(kz)
+
+                                table.insert(blocks_to_send, {
+                                    x = kx,
+                                    y = ky,
+                                    z = kz,
+                                    name = "minecraft:air"
+                                })
+
                                 world_cache[key] = "minecraft:air"
                             end
                         end
                     end
+
+                    last_scan_keys = current_scan_keys
 
                     -- Send in chunks
                     local chunkSize = 100 
