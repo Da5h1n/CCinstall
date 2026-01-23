@@ -260,6 +260,19 @@ local function generateStripQueue(startX, startY, startZ, distance)
     return queue
 end
 
+local function sanitize(t)
+    if type(t) ~= "table" then return t end
+    local res = {}
+    for k, v in pairs(t) do
+        if type(v) == "table" then
+            res[k] = sanitize(v)
+        else
+            res[k] = v
+        end
+    end
+    return res
+end
+
 -- --- MAIN BOOT ---
 
 connect()
@@ -321,14 +334,17 @@ while true do
                         local key = absX .. "," .. absY .. "," .. absZ
                         current_scan_keys[key] = true
 
+                        local cleanState = sanitize(b.state or {})
+                        local cleanTags = sanitize(b.tags or {})
+
                         -- Always send block, update cache
                         table.insert(blocks_to_send, {
                             x = absX,
                             y = absY,
                             z = absZ,
                             name = tostring(b.name),
-                            state = b.state or {},
-                            tags = b.tags or {}
+                            state = cleanState,
+                            tags = cleanTags
                         })
                         world_cache[key] = b.name
                     end
@@ -345,7 +361,9 @@ while true do
                                     x = kx,
                                     y = ky,
                                     z = kz,
-                                    name = "minecraft:air"
+                                    name = "minecraft:air",
+                                    state = {},
+                                    tags = {}
                                 })
                                 world_cache[key] = "minecraft:air"
                             end
