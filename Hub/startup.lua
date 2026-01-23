@@ -294,7 +294,11 @@ while true do
                 local geo = peripheral.wrap(side)
                 local hubX, hubY, hubZ = gps.locate()
                 if not hubX then return end
-                
+
+                -- Persistent scan cache
+                world_cache = world_cache or {}
+                last_scan_keys = last_scan_keys or {}
+
                 -- Calculate offset based on scanner position
                 local offX, offY, offZ = 0, 0, 0
                 if side == "right" then offX = 1
@@ -310,27 +314,24 @@ while true do
                     local scandata = geo.scan(radius)
                     local blocks_to_send = {}
                     local current_scan_keys = {}
-                    local last_scan_keys = {}
 
+                    -- Add scanned blocks
                     for _, b in pairs(scandata) do
-                        -- APPLY OFFSET HERE
                         local absX, absY, absZ = hubX + offX + b.x, hubY + offY + b.y, hubZ + offZ + b.z
                         local key = absX .. "," .. absY .. "," .. absZ
                         current_scan_keys[key] = true
 
-                        if world_cache[key] ~= b.name then
-                            -- Keep table flat to avoid serialization errors
-                            table.insert(blocks_to_send, {
-                                x = absX, 
-                                y = absY, 
-                                z = absZ, 
-                                name = tostring(b.name)
-                            })
-                            world_cache[key] = b.name
-                        end
+                        -- Always send block, update cache
+                        table.insert(blocks_to_send, {
+                            x = absX,
+                            y = absY,
+                            z = absZ,
+                            name = tostring(b.name)
+                        })
+                        world_cache[key] = b.name
                     end
 
-                    -- Cleanup: blocks that WERE visible last scan but no longer are
+                    -- Cleanup blocks that disappeared
                     for key, _ in pairs(last_scan_keys) do
                         if not current_scan_keys[key] then
                             local old_name = world_cache[key]
@@ -344,33 +345,34 @@ while true do
                                     z = kz,
                                     name = "minecraft:air"
                                 })
-
                                 world_cache[key] = "minecraft:air"
                             end
                         end
                     end
 
+                    -- Persist for next scan
                     last_scan_keys = current_scan_keys
 
                     -- Send in chunks
-                    local chunkSize = 100 
+                    local chunkSize = 100
                     for i = 1, #blocks_to_send, chunkSize do
                         local chunk = {}
                         for j = i, math.min(i + chunkSize - 1, #blocks_to_send) do
                             table.insert(chunk, blocks_to_send[j])
                         end
-                        
+
                         safeSend({
                             type = "world_update",
                             id = os.getComputerID(),
                             blocks = chunk
                         })
-                        sleep(0.05) 
+                        sleep(0.05)
                     end
                     print("Scan complete: Sent " .. #blocks_to_send .. " blocks")
                 else
                     print("No Geoscanner found on " .. side)
                 end
+
 
             else
                 local cmd = tostring(msg.command or msg.type or "")
