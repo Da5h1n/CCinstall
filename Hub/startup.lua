@@ -291,67 +291,84 @@ while true do
             elseif msg.type == "scan_nearby" then
                 local side = "right"
                 local geo = peripheral.wrap(side)
+
+                local hubX, hubY, hubZ = gps.locate()
+                hubX = hubX or 0
+                hubY = hubY or 0
+                hubZ = hubZ or 0
+
+                -- offset logic
+                local offX, offY, offZ = 0, 0, 0
+                if side == "right" then offX = 1
+                elseif side == "left" then offX = -1
+                elseif side == "top" then offY = 1
+                elseif side == "bottom" then offY = -1
+                elseif side == "front" then offZ = -1
+                elseif side == "back" then offZ = 1
+                end
+
                 if geo then
                     local radius = 8
-                    local blocks = {}
                     local scandata = geo.scan(radius)
+                    local blocks_to_send = {}
 
-                    if scandata then 
-                        local blocks_to_send = {}
+                    local found = {}
+                    for _, b in pairs(scandata) do
+                        found[b.x .. "," .. b.y .. "," .. b.z] = b
+                    end
 
-                        local hubX, hubY, hubZ = gps.locate()
-                        hubX = hubX or 0
-                        hubY = hubY or 0
-                        hubZ = hubZ or 0
+                    for dx = -radius, radius do
+                        for dy = -radius, radius do
+                            for dz = -radius, radius do
+                                local key = dx .. "," .. dy .. "," .. dz
+                                local block = found[key]
 
-                        -- offset logic
-                        local offX, offY, offZ = 0, 0, 0
-                        if side == "right" then offX = 1
-                        elseif side == "left" then offX = -1
-                        elseif side == "top" then offY = 1
-                        elseif side == "bottom" then offY = -1
-                        elseif side == "front" then offZ = -1
-                        elseif side == "back" then offZ = 1
-                        end
+                                if block then
 
-                        for _, block in pairs(scandata) do
-                            
-                            local cleanTags = {}
-                            if block.tags then
-                                for tag, value in pairs(block.tags) do
-                                    cleanTags[tag] = value
+                                    local cleanTags = {}
+                                    if block.tags then
+                                        for tag, value in pairs(block.tags) do
+                                            cleanTags[tag] = value
+                                        end
+                                    end
+
+                                    table.insert(blocks_to_send, {
+                                        x = hubX + offX + block.x,
+                                        y = hubY + offY + block.y,
+                                        z = hubZ + offZ + block.z,
+                                        name = block.name,
+                                        tags = cleanTags
+                                    })
+                                else
+                                    table.insert(blocks_to_send, {
+                                        x = hubX + offX + dx,
+                                        y = hubY + offY + dy,
+                                        z = hubZ + offZ + dz,
+                                        name = "minecraft:air"
+                                    })
                                 end
                             end
-
-                            table.insert(blocks_to_send, {
-                                x = hubX + offX + block.x,
-                                y = hubY + offY + block.y,
-                                z = hubZ + offZ + block.z,
-                                name = block.name,
-                                tags = cleanTags
-                            })
                         end
-
-                        local chunkSize = 145
-                        for i = 1, #blocks_to_send, chunkSize do
-                            local chunk = {}
-                            for j = i, math.min(i + chunkSize - 1, #blocks_to_send) do
-                                table.insert(chunk, blocks_to_send[j])
-                            end
-
-                            local response = {
-                                type = "world_update",
-                                id = os.getComputerID(),
-                                blocks = chunk,
-                                part = math.floor(i/chunkSize) + 1,
-                                total_parts = math.ceil(#blocks_to_send / chunkSize)
-                            }
-
-                            ws.send(textutils.serializeJSON(response))
-                            sleep(0.05)
-                        end
-                        print("Scan complete: Sent " .. #blocks_to_send .. " blocks.")
                     end
+                    local chunkSize = 145
+                    for i = 1, #blocks_to_send, chunkSize do
+                        local chunk = {}
+                        for j = i, math.min(i + chunkSize - 1, #blocks_to_send) do
+                            table.insert(chunk, blocks_to_send[j])
+                        end
+                        
+                        local response = {
+                            type = "world_update",
+                            id = os.getComputerID(),
+                            blocks = chunk,
+                            part = math.floor(i/chunkSize) + 1,
+                            total_parts = math.ceil(#blocks_to_send / chunkSize)
+                        }
+
+                        ws.send(textutils.serializeJSON(response))
+                        sleep(0.05)
+                    end
+                    print("Scan complete: Sent " .. #blocks_to_send .. " blocks")
                 else
                     print("No Geoscanner found on Right side.")
                     local err = {type="turtle_response", id=os.getComputerID(), content="Error: No Geo Scanner found"}
