@@ -6,6 +6,7 @@ local ws = nil
 local fleet_cache = {}
 local fleet_roles = {}
 local fleet_pairs = {}
+local world_cache = {}
 
 local refuel_queue = {}
 local current_refueler = nil
@@ -291,12 +292,9 @@ while true do
             elseif msg.type == "scan_nearby" then
                 local side = "right"
                 local geo = peripheral.wrap(side)
-
                 local hubX, hubY, hubZ = gps.locate()
-                hubX = hubX or 0
-                hubY = hubY or 0
-                hubZ = hubZ or 0
-
+                if not hubX then return end
+                
                 -- offset logic
                 local offX, offY, offZ = 0, 0, 0
                 if side == "right" then offX = 1
@@ -311,45 +309,34 @@ while true do
                     local radius = 8
                     local scandata = geo.scan(radius)
                     local blocks_to_send = {}
+                    local current_scan_keys = {}
 
-                    local found = {}
                     for _, b in pairs(scandata) do
-                        found[b.x .. "," .. b.y .. "," .. b.z] = b
+                        local absX, absY, absZ = hubX + offX + b.x, hubY + offY + b.y, hubZ + offZ + b.z
+                        local key = absX .. "," .. absY .. "," .. absZ
+                        current_scan_keys[key] = true
+
+                        if world_cache[key] ~= b.name then
+                            table.insert(blocks_to_send, {x = absX, y = absY, z = absZ, name = b.name, tags = b.tags or {}})
+                            world_cache[key] = b.name
+                        end
                     end
 
-                    for dx = -radius, radius do
-                        for dy = -radius, radius do
-                            for dz = -radius, radius do
-                                local key = dx .. "," .. dy .. "," .. dz
-                                local block = found[key]
+                    for key, old_name in pairs(world_cache) do
+                        local kx, ky, kz = key:match("([^,]+),([^,]+),([^,]+)")
+                        kx, ky, kz = tonumber(kx), tonumber(ky), tonumber(kz)
 
-                                if block then
-
-                                    local cleanTags = {}
-                                    if block.tags then
-                                        for tag, value in pairs(block.tags) do
-                                            cleanTags[tag] = value
-                                        end
-                                    end
-
-                                    table.insert(blocks_to_send, {
-                                        x = hubX + offX + block.x,
-                                        y = hubY + offY + block.y,
-                                        z = hubZ + offZ + block.z,
-                                        name = block.name,
-                                        tags = cleanTags
-                                    })
-                                else
-                                    table.insert(blocks_to_send, {
-                                        x = hubX + offX + dx,
-                                        y = hubY + offY + dy,
-                                        z = hubZ + offZ + dz,
-                                        name = "minecraft:air"
-                                    })
-                                end
+                        if math.abs(kx - (hubX+offX)) <= radius and
+                           math.abs(ky - (hubY+offY)) <= radius and
+                           math.abs(kz - (hubZ+offZ)) <= radius then
+                            
+                            if not current_scan_keys[key] and old_name ~= "minecraft:air" then
+                                table.insert(blocks_to_send, {x = kx, y = ky, z = kz, name = "minecraft:air"})
+                                world_cache[key] = "minecraft:air"
                             end
                         end
                     end
+
                     local chunkSize = 145
                     for i = 1, #blocks_to_send, chunkSize do
                         local chunk = {}
