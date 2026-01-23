@@ -295,16 +295,6 @@ while true do
                 local hubX, hubY, hubZ = gps.locate()
                 if not hubX then return end
                 
-                -- offset logic
-                local offX, offY, offZ = 0, 0, 0
-                if side == "right" then offX = 1
-                elseif side == "left" then offX = -1
-                elseif side == "top" then offY = 1
-                elseif side == "bottom" then offY = -1
-                elseif side == "front" then offZ = -1
-                elseif side == "back" then offZ = 1
-                end
-
                 if geo then
                     local radius = 8
                     local scandata = geo.scan(radius)
@@ -312,54 +302,56 @@ while true do
                     local current_scan_keys = {}
 
                     for _, b in pairs(scandata) do
-                        local absX, absY, absZ = hubX + offX + b.x, hubY + offY + b.y, hubZ + offZ + b.z
+                        local absX, absY, absZ = hubX + b.x, hubY + b.y, hubZ + b.z
                         local key = absX .. "," .. absY .. "," .. absZ
                         current_scan_keys[key] = true
 
+                        -- Only send if the block has changed to save bandwidth
                         if world_cache[key] ~= b.name then
-                            table.insert(blocks_to_send, {x = absX, y = absY, z = absZ, name = b.name, tags = b.tags or {}})
+                            -- CRITICAL FIX: Create a NEW flat table here. 
+                            -- Do not pass b.tags directly if it might contain repeated table structures.
+                            table.insert(blocks_to_send, {
+                                x = absX, 
+                                y = absY, 
+                                z = absZ, 
+                                name = tostring(b.name)
+                            })
                             world_cache[key] = b.name
                         end
                     end
 
+                    -- Cleanup: Detect blocks that are now AIR
                     for key, old_name in pairs(world_cache) do
-                        local kx, ky, kz = key:match("([^,]+),([^,]+),([^,]+)")
-                        kx, ky, kz = tonumber(kx), tonumber(ky), tonumber(kz)
-
-                        if math.abs(kx - (hubX+offX)) <= radius and
-                           math.abs(ky - (hubY+offY)) <= radius and
-                           math.abs(kz - (hubZ+offZ)) <= radius then
+                        if not current_scan_keys[key] and old_name ~= "minecraft:air" then
+                            local kx, ky, kz = key:match("([^,]+),([^,]+),([^,]+)")
+                            kx, ky, kz = tonumber(kx), tonumber(ky), tonumber(kz)
                             
-                            if not current_scan_keys[key] and old_name ~= "minecraft:air" then
+                            -- Only clear blocks within the scan radius
+                            if math.abs(kx - hubX) <= radius and math.abs(ky - hubY) <= radius and math.abs(kz - hubZ) <= radius then
                                 table.insert(blocks_to_send, {x = kx, y = ky, z = kz, name = "minecraft:air"})
                                 world_cache[key] = "minecraft:air"
                             end
                         end
                     end
 
-                    local chunkSize = 145
+                    -- Send in chunks to prevent websocket overflow
+                    local chunkSize = 100 -- Reduced size for safety
                     for i = 1, #blocks_to_send, chunkSize do
                         local chunk = {}
                         for j = i, math.min(i + chunkSize - 1, #blocks_to_send) do
                             table.insert(chunk, blocks_to_send[j])
                         end
                         
-                        local response = {
+                        safeSend({
                             type = "world_update",
                             id = os.getComputerID(),
-                            blocks = chunk,
-                            part = math.floor(i/chunkSize) + 1,
-                            total_parts = math.ceil(#blocks_to_send / chunkSize)
-                        }
-
-                        ws.send(textutils.serializeJSON(response))
-                        sleep(0.05)
+                            blocks = chunk
+                        })
+                        sleep(0.1) -- Small delay to allow Dashboard to process
                     end
                     print("Scan complete: Sent " .. #blocks_to_send .. " blocks")
                 else
-                    print("No Geoscanner found on Right side.")
-                    local err = {type="turtle_response", id=os.getComputerID(), content="Error: No Geo Scanner found"}
-                    ws.send(textutils.serializeJSON(err))
+                    print("No Geoscanner found.")
                 end
 
             else
