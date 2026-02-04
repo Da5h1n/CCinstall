@@ -1,4 +1,4 @@
-local ws_url = "ws://192.168.0.62:25565"
+local ws_url = "ws://192.168.0.62:25566"
 local version_protocol = "fleet_status" 
 peripheral.find("modem", rednet.open)
 
@@ -6,7 +6,6 @@ local ws = nil
 local fleet_cache = {}
 local fleet_roles = {}
 local fleet_pairs = {}
-local world_cache = {}
 
 local refuel_queue = {}
 local current_refueler = nil
@@ -273,107 +272,38 @@ local function sanitize(t)
     return res
 end
 
--- --- MAIN BOOT ---
-
-connect()
-
-local hubHeartbeat = os.startTimer(15)
-
-while true do
-    local event, p1, p2, p3 = os.pullEvent()
-
-    -- handle dashboard Comamnds
-    if event == "websocket_message" then
-        local raw = p2
+local function socketListener()
+    while true do
+        local event, url, raw = os.pullEvent("websocket_message")
         local success, msg = pcall(textutils.unserializeJSON, raw)
 
-        if success and type(msg) == "table" then
 
+        if success and type(msg) == "table" then
+            
             if msg.protocol == "fleet_ack" then
                 if msg.target and msg.target ~= "HUB" then
                     rednet.send(tonumber(msg.target), "ACK", "fleet_ack")
                 end
-                
-            elseif msg.type == "INSTALLER_UPDATE" then
-                print("Starting Fleet Update Process...")
-                coordinateFleetUpdate(msg.whitelist)
-
-            elseif msg.target and msg.target ~= "HUB" then
-                local cmd = tostring(msg.command or msg.type or "")
-                relayTargetCommand(msg.target, cmd, msg.whitelist)
 
             elseif msg.type == "scan_nearby" then
                 local side = "right" -- Ensure this matches your physical setup
                 local geo = peripheral.wrap(side)
-                local hubX, hubY, hubZ = gps.locate()
-                if not hubX then return end
+                local hubPos = getHubPos()
 
-                -- Persistent scan cache
-                world_cache = world_cache or {}
-                last_scan_keys = last_scan_keys or {}
-
-                -- Calculate offset based on scanner position
-                local offX, offY, offZ = 0, 0, 0
-                if side == "right" then offX = 1
-                elseif side == "left" then offX = -1
-                elseif side == "top" then offY = 1
-                elseif side == "bottom" then offY = -1
-                elseif side == "front" then offZ = -1
-                elseif side == "back" then offZ = 1
-                end
-
-                if geo then
+                if geo and hubPos then
                     local radius = 8
                     local scandata = geo.scan(radius)
                     local blocks_to_send = {}
-                    local current_scan_keys = {}
 
-                    -- Add scanned blocks
                     for _, b in pairs(scandata) do
-                        local absX, absY, absZ = hubX + offX + b.x, hubY + offY + b.y, hubZ + offZ + b.z
-                        local key = absX .. "," .. absY .. "," .. absZ
-                        current_scan_keys[key] = true
-
-                        local cleanState = sanitize(b.state or {})
-                        local cleanTags = sanitize(b.tags or {})
-
-                        -- Always send block, update cache
                         table.insert(blocks_to_send, {
-                            x = absX,
-                            y = absY,
-                            z = absZ,
-                            name = tostring(b.name),
-                            state = cleanState,
-                            tags = cleanTags
+                            x = b.x,
+                            y = b.y,
+                            z = b.z,
+                            name = b.name
                         })
-                        world_cache[key] = b.name
                     end
 
-                    -- Cleanup blocks that disappeared
-                    for key, _ in pairs(last_scan_keys) do
-                        if not current_scan_keys[key] then
-                            local old_name = world_cache[key]
-                            if old_name and old_name ~= "minecraft:air" then
-                                local kx, ky, kz = key:match("([^,]+),([^,]+),([^,]+)")
-                                kx, ky, kz = tonumber(kx), tonumber(ky), tonumber(kz)
-
-                                table.insert(blocks_to_send, {
-                                    x = kx,
-                                    y = ky,
-                                    z = kz,
-                                    name = "minecraft:air",
-                                    state = {},
-                                    tags = {}
-                                })
-                                world_cache[key] = "minecraft:air"
-                            end
-                        end
-                    end
-
-                    -- Persist for next scan
-                    last_scan_keys = current_scan_keys
-
-                    -- Send in chunks
                     local chunkSize = 100
                     for i = 1, #blocks_to_send, chunkSize do
                         local chunk = {}
@@ -384,6 +314,8 @@ while true do
                         safeSend({
                             type = "world_update",
                             id = os.getComputerID(),
+                            anchor = hubPos,
+                            side = side,
                             blocks = chunk
                         })
                         sleep(0.05)
@@ -392,6 +324,14 @@ while true do
                 else
                     print("No Geoscanner found on " .. side)
                 end
+
+            elseif msg.type == "INSTALLER_UPDATE" then
+                print("Starting Fleet Update Process...")
+                coordinateFleetUpdate(msg.whitelist)
+
+            elseif msg.target and msg.target ~= "HUB" then
+                local cmd = tostring(msg.command or msg.type or "")
+                relayTargetCommand(msg.target, cmd, msg.whitelist)
 
 
             else
@@ -464,55 +404,79 @@ while true do
             print("Error: Recieved malformed JSON from Dashboard")
         end
 
-        -- handle rednet messages
-    elseif event == "rednet_message" then
-        local senderID, message, protocol = p1, p2, p3
-        if protocol == version_protocol then
-            safeSend(message)
-            if type(message) == "table" then
-                    
-                local isNew = fleet_cache[senderID] == nil
-
-                fleet_cache[senderID] = true
-                if message.role then fleet_roles[senderID] = message.role end
-
-                safeSend(message)
-                if isNew then updatePairs() end
-
-                if message.lowFuel then
-                    local state = tostring(message.state or ""):lower()
-                    local alreadyInQueue = false
-                    for _, qID in ipairs(refuel_queue) do if qID == senderID then alreadyInQueue = true end end
-
-                    if not alreadyInQueue and current_refueler ~= senderID then
-                        if state == "idle" or state == "parked" then
-                            table.insert(refuel_queue, senderID)
-                            print("Turtle " .. senderID .. " added to refuel queue. Position: " .. #refuel_queue)
-                        end
-                    end
-                end
-
-                if senderID == current_refueler and tostring(message.state or ""):lower() == "parked" then
-                    current_refueler = nil
-                    print("Turtle " .. senderID .. " has finished refueling and parked.")
-                end
-                processRefuelQueue()
-
-            elseif message == "request_parking" then
-                print("Turtle " .. senderID .. " requested parking.")
-                sendParkingOrder(senderID)
-            end
-        end
-        -- Heartbeat timer
-    elseif event == "timer" and p1 == hubHeartbeat then
-        local hPos = getHubPos()
-        safeSend({type = "version_report", id = "HUB", name = "Central Command Hub", role = "hub", v = getHubVersion(), pos = hPos, online = true})
-        hubHeartbeat = os.startTimer(15)
-
-    -- RECONECT LOGIC
-    elseif event == "websocket_closed" then
-        print("Websocket lost! Reconnecting...")
-        ws = nil
-        connect()
     end
 end
+
+-- --- MAIN BOOT ---
+
+
+connect()
+
+local function mainLoop()
+    
+    local hubHeartbeat = os.startTimer(15)
+
+    while true do
+        local event, p1, p2, p3 = os.pullEvent()
+
+        if event == "websocket_message" then
+            os.queueEvent(event, p1, p2, p3)
+            sleep(0)
+        
+
+            -- handle rednet messages
+        elseif event == "rednet_message" then
+            local senderID, message, protocol = p1, p2, p3
+            if protocol == version_protocol then
+                safeSend(message)
+                if type(message) == "table" then
+                        
+                    local isNew = fleet_cache[senderID] == nil
+
+                    fleet_cache[senderID] = true
+                    if message.role then fleet_roles[senderID] = message.role end
+
+                    safeSend(message)
+                    if isNew then updatePairs() end
+
+                    if message.lowFuel then
+                        local state = tostring(message.state or ""):lower()
+                        local alreadyInQueue = false
+                        for _, qID in ipairs(refuel_queue) do if qID == senderID then alreadyInQueue = true end end
+
+                        if not alreadyInQueue and current_refueler ~= senderID then
+                            if state == "idle" or state == "parked" then
+                                table.insert(refuel_queue, senderID)
+                                print("Turtle " .. senderID .. " added to refuel queue. Position: " .. #refuel_queue)
+                            end
+                        end
+                    end
+
+                    if senderID == current_refueler and tostring(message.state or ""):lower() == "parked" then
+                        current_refueler = nil
+                        print("Turtle " .. senderID .. " has finished refueling and parked.")
+                    end
+                    processRefuelQueue()
+
+                elseif message == "request_parking" then
+                    print("Turtle " .. senderID .. " requested parking.")
+                    sendParkingOrder(senderID)
+                end
+            end
+            -- Heartbeat timer
+        elseif event == "timer" and p1 == hubHeartbeat then
+            local hPos = getHubPos()
+            safeSend({type = "version_report", id = "HUB", name = "Central Command Hub", role = "hub", v = getHubVersion(), pos = hPos, online = true})
+            hubHeartbeat = os.startTimer(15)
+
+        -- RECONECT LOGIC
+        elseif event == "websocket_closed" then
+            print("Websocket lost! Reconnecting...")
+            ws = nil
+            connect()
+        end
+    end
+
+end
+
+parallel.waitForAny(mainLoop, socketListener)
