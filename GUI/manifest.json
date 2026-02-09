@@ -4,15 +4,16 @@
   "description": "A simple GUI framework",
   "installDir": "",
   "files": [
+    "README.md",
     "startup.lua",
     "test.lua",
-    "lib/gui/frame.lua",
-    "lib/gui/init.lua",
-    "lib/gui/elements/TabControl.lua",
-    "lib/gui/elements/button.lua",
-    "lib/gui/elements/dropdown.lua",
-    "lib/gui/elements/element.lua",
-    "lib/gui/elements/keyinput.lua",
-    "lib/gui/elements/label.lua"
+    "test2.lua",
+    "lib/gui/manager.lua",
+    "lib/gui/elements/01_Frame.lua",
+    "lib/gui/elements/02_Button.lua",
+    "lib/gui/elements/03_Label.lua",
+    "lib/gui/elements/04_Dropdown.lua",
+    "lib/gui/elements/05_Input.lua",
+    "lib/gui/elements/06_ProgressBar.lua"
   ]
 }
