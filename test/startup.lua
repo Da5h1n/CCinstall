@@ -11,7 +11,7 @@ local frameBuffer, audioBuffer = {}, {}
 local isStarted = false
 local currentTime, videoDuration, totalSamplesPlayed = 0,0,0
 local currentTitle, currentPlaylist, upcomingList = "Waiting...","",{}
-local currentLatency = 0
+local currentLatency, lastPacketTime = 0, os.epoch("utc")
 
 local displayFps, lastFpsUpdate, fpsCount = 0, os.clock(), 0
 
@@ -139,7 +139,7 @@ local function updateInfo()
 end
 
 -- websocket
-local ws, err = http.websocket("ws://skinnerm.duckdns.org:10000/ws")
+local ws, err = http.websocket("ws://192.168.0.224:10000/ws")
 if not ws then error("Connection failed: "..tostring(err)) end
 
 -- calculate wall size
@@ -202,10 +202,14 @@ parallel.waitForAll(
     function() -- RECEIVER
         while true do
             local _, _, msg, isBin = os.pullEvent("websocket_message")
+
+            local now = os.epoch("utc")
+            currentLatency = now - lastPacketTime
+            lastPacketTime = now
+
             if isBin then
                 local head = sByte(msg,1)
                 if head==70 then -- video
-                    currentLatency=osEpoch("utc")-bytesToLong(msg,2)
                     table.insert(frameBuffer,msg)
                     if #frameBuffer>MAX_BUFFER then table.remove(frameBuffer,1) end
                 elseif head==65 then -- audio
