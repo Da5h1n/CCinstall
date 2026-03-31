@@ -1,0 +1,9 @@
+{
+  "name": "VIDEO",
+  "version": "0.0.0.0.1",
+  "description": "A script that recieves video over Websocket",
+  "installDir": "",
+  "files": [
+    "startup.lua"
+  ]
+}
