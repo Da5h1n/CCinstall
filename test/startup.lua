@@ -139,7 +139,7 @@ local function updateInfo()
 end
 
 -- websocket
-local ws, err = http.websocket("ws://192.168.0.224:10000/ws")
+local ws, err = http.websocket("ws://skinnerm.duckdns.org:10000/ws")
 if not ws then error("Connection failed: "..tostring(err)) end
 
 -- calculate wall size
